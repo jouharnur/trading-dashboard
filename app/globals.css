@@ -22,6 +22,44 @@ a { color: #6ab0ff; text-decoration: none; }
   .accounts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .account-col { min-width: 0; }  /* allows children to shrink inside grid */
+
+/* ---- Mobile summary grid (phones / small screens) ---- */
+.mobile-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+@media (min-width: 560px) {
+  .mobile-summary-grid { grid-template-columns: 1fr 1fr; }
+}
+.mobile-summary {
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s;
+}
+.mobile-summary:active { background: #1a2030; border-color: #3a4359; }
+.mobile-summary-header {
+  font-size: 14px;
+  color: #e8ecf1;
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
+}
+.mobile-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.back-btn {
+  background: #141821;
+  border: 1px solid #232938;
+  color: #e8ecf1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.back-btn:active { background: #1a2030; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .card {
   background: #141821;

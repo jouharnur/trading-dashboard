@@ -294,10 +294,45 @@ function AccountBlock({ acct }: { acct: Account }) {
   );
 }
 
+function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => void }) {
+  return (
+    <div className="card mobile-summary" onClick={onClick} role="button">
+      <div className="mobile-summary-header">
+        {statusDot(acct.last_seen)} <strong>{acct.tag}</strong>
+      </div>
+      <div className="mobile-summary-row">
+        <div>
+          <div className="muted">Equity</div>
+          <div className="big">{fmt$(acct.equity)}</div>
+          <div className="muted">bal {fmt$(acct.balance)}</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="muted">Floating</div>
+          <div className={"big " + cls(acct.floating)}>{fmt$(acct.floating)}</div>
+          <div className={"muted " + cls(acct.pnl_today)}>today {fmt$(acct.pnl_today)}</div>
+        </div>
+      </div>
+      <div className="muted" style={{ textAlign: "center", marginTop: 8, fontSize: 11 }}>
+        tap for details
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const [data, setData] = useState<Resp | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -325,6 +360,22 @@ export default function Page() {
     };
   }, []);
 
+  // Mobile expanded view: show only the selected account, with a back button
+  if (isMobile && expanded && data) {
+    const acct = data.accounts.find((a) => a.tag === expanded);
+    return (
+      <div className="container wide">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
+          <button className="back-btn" onClick={() => setExpanded(null)}>← back</button>
+          <div className="muted">
+            {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading…"}
+          </div>
+        </div>
+        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
+      </div>
+    );
+  }
+
   return (
     <div className="container wide">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
@@ -338,13 +389,22 @@ export default function Page() {
           <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
         </div>
       )}
-      <div className="accounts-grid">
-        {data?.accounts?.map((a) => (
-          <div key={a.tag} className="account-col">
-            <AccountBlock acct={a} />
-          </div>
-        ))}
-      </div>
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
