@@ -3,6 +3,14 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  "CDN-Cache-Control": "no-store",
+  "Vercel-CDN-Cache-Control": "no-store",
+};
 
 // Aggregated snapshot for the dashboard. Polled by the client every ~10s.
 export async function GET() {
@@ -113,8 +121,11 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({
-    fetched_at: new Date().toISOString(),
-    accounts: perAccount,
-  });
+  return NextResponse.json(
+    {
+      fetched_at: new Date().toISOString(),
+      accounts: perAccount,
+    },
+    { headers: NO_STORE_HEADERS }
+  );
 }
