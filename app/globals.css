@@ -9,6 +9,16 @@ html, body {
 }
 a { color: #6ab0ff; text-decoration: none; }
 .container { max-width: 1400px; margin: 0 auto; padding: 16px; }
+.container.wide { max-width: 2200px; }
+.accounts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 1400px) {
+  .accounts-grid { grid-template-columns: 1fr 1fr; }
+}
+.account-col { min-width: 0; }  /* allows children to shrink inside grid */
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .card {
   background: #141821;

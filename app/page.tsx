@@ -326,9 +326,9 @@ export default function Page() {
   }, []);
 
   return (
-    <div className="container">
+    <div className="container wide">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h1 style={{ fontSize: 20, margin: "8px 0" }}>Trading Dashboard</h1>
+        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
         <div className="muted">
           {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading…"}
         </div>
@@ -338,9 +338,13 @@ export default function Page() {
           <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
         </div>
       )}
-      {data?.accounts?.map((a) => (
-        <AccountBlock key={a.tag} acct={a} />
-      ))}
+      <div className="accounts-grid">
+        {data?.accounts?.map((a) => (
+          <div key={a.tag} className="account-col">
+            <AccountBlock acct={a} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
