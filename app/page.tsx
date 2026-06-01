@@ -530,4 +530,22 @@ export default function Page() {
         </div>
       )}
 
-      {is
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
