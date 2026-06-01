@@ -170,9 +170,11 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
 
 function fmtOpenTime(iso: string | null | undefined) {
   if (!iso) return "-";
-  const raw = new Date(iso);
-  if (isNaN(raw.getTime())) return "-";
-  const d = tzShift(raw.getTime());
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  // The EA sends position open_time as broker server time (already UTC+3 on
+  // Pepperstone / FTMO Demo) tagged with a "Z" suffix. We do NOT add the +3
+  // offset here, because that would double-shift it. Just read the raw fields.
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
@@ -233,6 +235,7 @@ function DealsTable({ rows }: { rows: Deal[] }) {
       {rows.length === 0 ? (
         <div className="muted">- none in the last 30 days -</div>
       ) : (
+        <div className="scroll-6">
         <table>
           <thead>
             <tr>
@@ -248,7 +251,7 @@ function DealsTable({ rows }: { rows: Deal[] }) {
             {rows.map((d, i) => (
               <tr key={i}>
                 <td className="muted">{(() => {
-                  const x = tzShift(d.closed_at);
+                  const x = new Date(d.closed_at);
                   return x.toISOString().replace("T", " ").substring(0, 16);
                 })()}</td>
                 <td>{d.ea}</td>
@@ -262,6 +265,7 @@ function DealsTable({ rows }: { rows: Deal[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
