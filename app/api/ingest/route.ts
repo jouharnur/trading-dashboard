@@ -75,7 +75,11 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
   const tag = payload.account.tag;
-  const ts = payload.ts;
+  // Always use server time. The EA's payload.ts comes from MT5's TimeCurrent(),
+  // which on weekends gets stuck at Friday's last tick (especially on FX-only
+  // brokers like FTMO) → equity-chart x-axis appears frozen. Stamping server-side
+  // makes ts strictly monotonic regardless of broker quirks.
+  const ts = new Date().toISOString();
 
   // 1) Upsert account row
   const acctErr = (

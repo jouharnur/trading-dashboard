@@ -22,14 +22,18 @@ export async function GET() {
 
   const accounts = (await db.from("accounts").select("*").order("tag")).data ?? [];
 
-  // Pull last 30 days of snapshots once and slice client-side for charts/PnL
-  const snapshots = (
+  // Pull last 30 days of snapshots once and slice client-side for charts/PnL.
+  // Get the most recent N first (DESC), reverse for chronological charting.
+  // 50k rows covers ~4 days at 30s × 5 accounts before the prune kicks in.
+  const snapshotsDesc = (
     await db
       .from("snapshots")
       .select("account_tag, ts, balance, equity, open_count")
       .gte("ts", since30d)
-      .order("ts")
+      .order("ts", { ascending: false })
+      .limit(50000)
   ).data ?? [];
+  const snapshots = snapshotsDesc.slice().reverse();
 
   const positions = (
     await db
