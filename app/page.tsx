@@ -56,51 +56,69 @@ function statusDot(iso: string | null) {
   return <span className="dot dead" />;
 }
 
-// FTMO budget limits (relative to STARTING balance, not running balance)
-const FTMO_START = 100_000;
-const FTMO_DAILY_LIMIT_PCT = 0.05;
-const FTMO_TOTAL_LIMIT_PCT = 0.10;
+// Compute today's equity high and low from the equity_24h snapshot stream.
+// Filters to >= start-of-day UTC, falls back to current equity if no data.
+function DayHighLow({ acct }: { acct: Account }) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const sod = today.getTime();
 
-function FtmoCompliance({ acct }: { acct: Account }) {
-  if (acct.tag !== "FTMO") return null;
-  // Equity loss vs start of day = (equity_now - equity_at_SOD). Approximated by pnl_today + floating.
-  const equityLossToday = acct.pnl_today + acct.floating;
-  const dailyBudget = FTMO_START * FTMO_DAILY_LIMIT_PCT;
-  const dailyUsed = Math.max(0, -equityLossToday);
-  const dailyRem = dailyBudget - dailyUsed;
+  let high = acct.equity;
+  let low = acct.equity;
+  let hiTs: number | null = null;
+  let loTs: number | null = null;
 
-  const totalDrawn = Math.max(0, FTMO_START - acct.equity);
-  const totalBudget = FTMO_START * FTMO_TOTAL_LIMIT_PCT;
-  const totalRem = totalBudget - totalDrawn;
+  for (const p of acct.equity_24h) {
+    const t = new Date(p.ts).getTime();
+    if (t < sod) continue;
+    const e = Number(p.equity);
+    if (e > high) { high = e; hiTs = t; }
+    if (e < low)  { low  = e; loTs = t; }
+  }
 
-  const bar = (used: number, budget: number) => {
-    const pct = Math.min(100, (used / budget) * 100);
-    const color = pct > 80 ? "#ff6b6b" : pct > 50 ? "#f5b94e" : "#4ddc8a";
-    return (
-      <div className="gauge">
-        <div style={{ width: `${pct}%`, background: color }} />
-      </div>
-    );
-  };
+  const spread = high - low;
+  const fmtTime = (t: number | null) =>
+    t == null ? "" : new Date(t).toISOString().substring(11, 16) + " UTC";
 
   return (
-    <div className="card" style={{ flex: 1, minWidth: 260 }}>
-      <h3>FTMO Compliance</h3>
-      <div className="muted">Daily loss budget</div>
-      {bar(dailyUsed, dailyBudget)}
-      <div className="muted">
-        used {fmt$(dailyUsed)} / {fmt$(dailyBudget)} · remaining <span className={dailyRem < 1000 ? "neg" : ""}>{fmt$(dailyRem)}</span>
-      </div>
-      <div className="muted" style={{ marginTop: 10 }}>Total drawdown budget</div>
-      {bar(totalDrawn, totalBudget)}
-      <div className="muted">
-        used {fmt$(totalDrawn)} / {fmt$(totalBudget)} · remaining <span className={totalRem < 2000 ? "neg" : ""}>{fmt$(totalRem)}</span>
-      </div>
+    <div className="card" style={{ flex: 1, minWidth: 200 }}>
+      <h3>Today High / Low</h3>
+      <div className="muted">High</div>
+      <div className="big pos">{fmt$(high)}</div>
+      <div className="muted" style={{ fontSize: 11 }}>{fmtTime(hiTs)}</div>
+      <div className="muted" style={{ marginTop: 8 }}>Low</div>
+      <div className="big neg">{fmt$(low)}</div>
+      <div className="muted" style={{ fontSize: 11 }}>{fmtTime(loTs)}</div>
+      <div className="muted" style={{ marginTop: 6 }}>spread {fmt$(spread)}</div>
     </div>
   );
 }
 
-function EquityChart({ data, title }: { data: EquityPt[]; title: string }) {
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// Tick formatter that switches by chart-window mode.
+//   24h → "HH:MM" UTC
+//    7d → "Mon 14h" UTC (day-of-week + hour)
+//   30d → "May 31" UTC (month + day)
+function chartTickFormatter(mode: "24h" | "7d" | "30d") {
+  return (v: number) => {
+    const d = new Date(v);
+    if (mode === "24h") {
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+    if (mode === "7d") {
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      return `${DOW[d.getUTCDay()]} ${hh}h`;
+    }
+    // 30d
+    return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  };
+}
+
+function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; mode: "24h" | "7d" | "30d" }) {
   const points = data.map((p) => ({
     t: new Date(p.ts).getTime(),
     equity: Number(p.equity),
@@ -116,13 +134,8 @@ function EquityChart({ data, title }: { data: EquityPt[]; title: string }) {
             <XAxis
               dataKey="t"
               tick={{ fill: "#98a3b3", fontSize: 11 }}
-              tickFormatter={(v) => {
-                const d = new Date(v);
-                const hh = String(d.getUTCHours()).padStart(2, "0");
-                const mm = String(d.getUTCMinutes()).padStart(2, "0");
-                return `${hh}:${mm}`;
-              }}
-              minTickGap={40}
+              tickFormatter={chartTickFormatter(mode)}
+              minTickGap={mode === "30d" ? 60 : 40}
             />
             <YAxis tick={{ fill: "#98a3b3", fontSize: 11 }} domain={["auto", "auto"]} />
             <Tooltip
@@ -254,7 +267,9 @@ function AccountBlock({ acct }: { acct: Account }) {
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Week</h3>
           <div className={"big " + cls(acct.pnl_week)}>{fmt$(acct.pnl_week)}</div>
-          <div className={"muted " + cls(acct.pnl_month)}>month {fmt$(acct.pnl_month)}</div>
+          <div style={{ marginTop: 6, fontSize: 12, color: "#98a3b3" }}>
+            Month: <span className={cls(acct.pnl_month)} style={{ fontWeight: 600 }}>{fmt$(acct.pnl_month)}</span>
+          </div>
         </div>
         <div className="card" style={{ flex: 1, minWidth: 180 }}>
           <h3>Today by EA (closed)</h3>
@@ -273,7 +288,7 @@ function AccountBlock({ acct }: { acct: Account }) {
             </table>
           )}
         </div>
-        <FtmoCompliance acct={acct} />
+        <DayHighLow acct={acct} />
       </div>
 
       {/* Equity chart (full-width) */}
@@ -285,7 +300,7 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} title="Equity (blue) vs Balance (green) — UTC" />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) — UTC" />
       </div>
 
       {/* Positions + Deals */}
