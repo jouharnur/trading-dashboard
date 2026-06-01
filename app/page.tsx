@@ -350,13 +350,17 @@ function AccountBlock({ acct }: { acct: Account }) {
           <div className="big">{fmt$(acct.equity)}</div>
           <div className="muted">bal {fmt$(acct.balance)}</div>
           <div className="muted" style={{ marginTop: 6 }}>
-            day open: <span style={{ fontWeight: 600, color: "#e8ecf1" }}>{fmt$(acct.day_start_equity)}</span>
+            day open: <span style={{ fontWeight: 600, color: "#e8ecf1" }}>{fmt$(acct.day_start_balance)}</span>
           </div>
           {(() => {
-            const dayGain = acct.equity - acct.day_start_equity;
-            const dayPct = acct.day_start_equity > 0 ? (dayGain / acct.day_start_equity) * 100 : 0;
+            // change = realized_today + floating_now
+            //   realized_today = current balance - balance at midnight
+            //   floating_now   = current unrealized P&L on open positions
+            // This sums to current_equity - day_start_balance.
             const realized = acct.balance - acct.day_start_balance;
-            const floatSwing = acct.floating - (acct.day_start_equity - acct.day_start_balance);
+            const floating = acct.floating;
+            const dayGain = realized + floating;
+            const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
             return (
               <>
                 <div style={{ marginTop: 2, fontSize: 12 }}>
@@ -368,8 +372,8 @@ function AccountBlock({ acct }: { acct: Account }) {
                 <div style={{ marginTop: 2, fontSize: 11 }}>
                   <span className="muted">  realized: </span>
                   <span className={cls(realized)}>{fmt$(realized)}</span>
-                  <span className="muted">  floating swing: </span>
-                  <span className={cls(floatSwing)}>{fmt$(floatSwing)}</span>
+                  <span className="muted">  floating: </span>
+                  <span className={cls(floating)}>{fmt$(floating)}</span>
                 </div>
               </>
             );
