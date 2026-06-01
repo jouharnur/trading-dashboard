@@ -155,11 +155,30 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
   );
 }
 
+// Format an ISO open_time as "MM-DD HH:MM" UTC (compact for table cells).
+function fmtOpenTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mn = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${mm}-${dd} ${hh}:${mn}`;
+}
+
 function PositionsTable({ rows }: { rows: Position[] }) {
+  // Newest-opened first; positions without an open_time fall to the bottom.
+  const sorted = rows.slice().sort((a, b) => {
+    const ta = new Date(a.open_time || 0).getTime();
+    const tb = new Date(b.open_time || 0).getTime();
+    return tb - ta;
+  });
+
   return (
     <div className="card" style={{ flex: 2, minWidth: 480 }}>
-      <h3>Open positions ({rows.length})</h3>
-      {rows.length === 0 ? (
+      <h3>Open positions ({sorted.length})</h3>
+      {sorted.length === 0 ? (
         <div className="muted">— no open positions —</div>
       ) : (
         <table>
@@ -172,11 +191,12 @@ function PositionsTable({ rows }: { rows: Position[] }) {
               <th className="desk-only">Open</th>
               <th className="desk-only">Now</th>
               <th>P&amp;L</th>
+              <th>Opened (UTC)</th>
               <th className="desk-only">Comment</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((p, i) => (
+            {sorted.map((p, i) => (
               <tr key={i}>
                 <td className="desk-only">{p.ea}</td>
                 <td>{p.symbol}</td>
@@ -185,6 +205,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
                 <td className="desk-only">{Number(p.open_price).toFixed(5)}</td>
                 <td className="desk-only">{Number(p.current_price).toFixed(5)}</td>
                 <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
+                <td className="muted">{fmtOpenTime(p.open_time)}</td>
                 <td className="muted desk-only">{p.comment}</td>
               </tr>
             ))}
