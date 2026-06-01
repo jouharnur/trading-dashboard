@@ -41,6 +41,14 @@ function fmt$(n: number | null | undefined) {
   const v = Math.abs(n as number).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   return `${sign}${v}`;
 }
+// Display all times in this fixed offset (broker time on Pepperstone is GMT+3).
+const TZ_OFFSET_H = 3;
+const TZ_LABEL = "UTC+3";
+const tzShift = (msOrIso: number | string) => {
+  const t = typeof msOrIso === "number" ? msOrIso : new Date(msOrIso).getTime();
+  return new Date(t + TZ_OFFSET_H * 3600 * 1000);
+};
+
 function cls(n: number) {
   if (n > 0) return "pos";
   if (n < 0) return "neg";
@@ -60,9 +68,10 @@ function statusDot(iso: string | null) {
 // Compute today's FLOATING (unrealized) PnL high and low from the
 // equity_24h snapshot stream. floating = equity - balance per snapshot.
 function DayHighLow({ acct }: { acct: Account }) {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const sod = today.getTime();
+  // Start of broker-day (UTC+3) = today's UTC midnight + offset, shifted back
+  const nowShifted = tzShift(Date.now());
+  nowShifted.setUTCHours(0, 0, 0, 0);
+  const sod = nowShifted.getTime() - TZ_OFFSET_H * 3600 * 1000;
 
   let high = acct.floating;
   let low = acct.floating;
@@ -79,7 +88,7 @@ function DayHighLow({ acct }: { acct: Account }) {
 
   const spread = high - low;
   const fmtTime = (t: number | null) =>
-    t == null ? "" : new Date(t).toISOString().substring(11, 16) + " UTC";
+    t == null ? "" : tzShift(t).toISOString().substring(11, 16) + " " + TZ_LABEL;
 
   return (
     <div className="card" style={{ flex: 1, minWidth: 200 }}>
@@ -100,7 +109,7 @@ const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","
 
 function chartTickFormatter(mode: "24h" | "7d" | "30d") {
   return (v: number) => {
-    const d = new Date(v);
+    const d = tzShift(v);
     if (mode === "24h") {
       const hh = String(d.getUTCHours()).padStart(2, "0");
       const mm = String(d.getUTCMinutes()).padStart(2, "0");
@@ -137,8 +146,8 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
             <Tooltip
               contentStyle={{ background: "#141821", border: "1px solid #232938", fontSize: 12 }}
               labelFormatter={(v) => {
-                const d = new Date(v as number);
-                return d.toISOString().replace("T", " ").substring(0, 19) + " UTC";
+                const d = tzShift(v as number);
+                return d.toISOString().replace("T", " ").substring(0, 19) + " " + TZ_LABEL;
               }}
               formatter={(v: any) => fmt$(Number(v))}
             />
@@ -153,8 +162,9 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
 
 function fmtOpenTime(iso: string | null | undefined) {
   if (!iso) return "-";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
+  const raw = new Date(iso);
+  if (isNaN(raw.getTime())) return "-";
+  const d = tzShift(raw.getTime());
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
@@ -184,7 +194,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
                 <th className="desk-only">Side</th>
                 <th>Vol</th>
                 <th>P&amp;L</th>
-                <th>Opened (UTC)</th>
+                <th>Opened (UTC+3)</th>
                 <th className="desk-only">Comment</th>
               </tr>
             </thead>
@@ -229,7 +239,10 @@ function DealsTable({ rows }: { rows: Deal[] }) {
           <tbody>
             {rows.map((d, i) => (
               <tr key={i}>
-                <td className="muted">{new Date(d.closed_at).toLocaleString()}</td>
+                <td className="muted">{(() => {
+                  const x = tzShift(d.closed_at);
+                  return x.toISOString().replace("T", " ").substring(0, 16);
+                })()}</td>
                 <td>{d.ea}</td>
                 <td>{d.symbol}</td>
                 <td>{d.side === 0 ? "BUY" : "SELL"}</td>
@@ -373,7 +386,7 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC" />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
@@ -456,7 +469,7 @@ export default function Page() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
           <button className="back-btn" onClick={() => setExpanded(null)}>back</button>
           <div className="muted">
-            {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading..."}
+            {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
           </div>
         </div>
         {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
@@ -469,7 +482,7 @@ export default function Page() {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
         <div className="muted">
-          {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading..."}
+          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
         </div>
       </div>
       {data?.accounts?.length === 0 && (
