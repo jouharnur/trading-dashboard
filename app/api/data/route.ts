@@ -33,7 +33,44 @@ export async function GET() {
       .order("ts", { ascending: false })
       .limit(50000)
   ).data ?? [];
-  const snapshots = snapshotsDesc.slice().reverse();
+  const rawSnapshots = snapshotsDesc.slice().reverse();
+
+  // Smooth the equity series by bucketing into 1-minute windows per account.
+  // For each (account, minute) keep ONE point whose equity is the median of
+  // pushes inside that minute — eliminates intra-bar mark-to-market jitter
+  // (equity bounces ±$500 between ticks on a $100K account with open positions)
+  // and also dedupes if two EAs ever pushed under the same tag.
+  const BUCKET_MS = 60_000;
+  const buckets = new Map<string, { account_tag: string; ts: string; balance: number; equity: number; open_count: number; eqs: number[] }>();
+  for (const s of rawSnapshots) {
+    const t = new Date(s.ts).getTime();
+    const bucket = Math.floor(t / BUCKET_MS) * BUCKET_MS;
+    const key = `${s.account_tag}_${bucket}`;
+    const existing = buckets.get(key);
+    if (!existing) {
+      buckets.set(key, {
+        account_tag: s.account_tag,
+        ts: new Date(bucket).toISOString(),
+        balance: Number(s.balance),
+        equity: Number(s.equity),
+        open_count: s.open_count ?? 0,
+        eqs: [Number(s.equity)],
+      });
+    } else {
+      existing.eqs.push(Number(s.equity));
+      // balance changes rarely; keep latest
+      existing.balance = Number(s.balance);
+      existing.open_count = s.open_count ?? existing.open_count;
+    }
+  }
+  const median = (arr: number[]) => {
+    const a = arr.slice().sort((x, y) => x - y);
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  };
+  const snapshots = Array.from(buckets.values())
+    .map((b) => ({ account_tag: b.account_tag, ts: b.ts, balance: b.balance, equity: median(b.eqs), open_count: b.open_count }))
+    .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
   const positions = (
     await db
