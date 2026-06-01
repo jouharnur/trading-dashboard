@@ -147,7 +147,7 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
               formatter={(v: any) => fmt$(Number(v))}
             />
             <Line type="monotone" dataKey="equity" stroke="#6ab0ff" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="balance" stroke="#4ddc8a" dot={false} strokeWidth={1} strokeDasharray="3 3" />
+            <Line type="monotone" dataKey="balance" stroke="#7ec99e" dot={false} strokeWidth={1} strokeDasharray="3 3" />
           </LineChart>
         </ResponsiveContainer>
       </div>
