@@ -431,10 +431,16 @@ function AccountBlock({ acct }: { acct: Account }) {
 }
 
 function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => void }) {
+  const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
+  const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
+  const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
   return (
     <div className="card mobile-summary" onClick={onClick} role="button">
-      <div className="mobile-summary-header">
-        {statusDot(acct.last_seen)} <strong>{acct.tag}</strong>
+      <div className="mobile-summary-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>{statusDot(acct.last_seen)} <strong>{acct.tag}</strong></span>
+        <span className={cls(dayGain)} style={{ fontSize: 14, fontWeight: 600 }}>
+          {arrow} {Math.abs(dayPct).toFixed(2)}%
+        </span>
       </div>
       <div className="mobile-summary-row">
         <div>
@@ -524,21 +530,4 @@ export default function Page() {
         </div>
       )}
 
-      {isMobile ? (
-        <div className="mobile-summary-grid">
-          {data?.accounts?.map((a) => (
-            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
-          ))}
-        </div>
-      ) : (
-        <div className="accounts-grid">
-          {data?.accounts?.map((a) => (
-            <div key={a.tag} className="account-col">
-              <AccountBlock acct={a} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+      {is
