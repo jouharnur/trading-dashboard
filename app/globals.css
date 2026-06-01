@@ -82,13 +82,11 @@ a { color: #6ab0ff; text-decoration: none; }
 }
 .big { font-size: 22px; font-weight: 600; }
 .muted { color: #98a3b3; font-size: 12px; }
-/* Data-vis palette — Bloomberg-style. No red/green emotional baggage.
-   Sky-blue for up, orange for down, yellow for warnings.
-   Profitable trades feel neutral; losing trades read as "warm/warning"
-   without screaming danger. */
-.pos { color: #38bdf8; }   /* sky blue */
-.neg { color: #fb923c; }   /* orange */
-.warn { color: #facc15; }  /* yellow */
+/* Softer trading palette. Sage green + dusty coral keep the green/red
+   convention readable without spiking cortisol every time you glance. */
+.pos { color: #7ec99e; }   /* sage green */
+.neg { color: #d68a85; }   /* dusty coral */
+.warn { color: #e8b56b; }  /* warm amber */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #232938; }
 th { color: #98a3b3; font-weight: 500; }
@@ -99,11 +97,11 @@ th { color: #98a3b3; font-weight: 500; }
   overflow: hidden;
   margin: 4px 0;
 }
-.gauge > div { height: 100%; background: #38bdf8; transition: width .3s, background .3s; }
+.gauge > div { height: 100%; background: #7ec99e; transition: width .3s, background .3s; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-.dot.ok { background: #38bdf8; }
-.dot.stale { background: #facc15; }
-.dot.dead { background: #fb923c; }
+.dot.ok { background: #7ec99e; }
+.dot.stale { background: #e8b56b; }
+.dot.dead { background: #d68a85; }
 .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
 .tab {
   padding: 6px 12px;

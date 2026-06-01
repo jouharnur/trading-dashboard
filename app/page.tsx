@@ -146,8 +146,8 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
               }}
               formatter={(v: any) => fmt$(Number(v))}
             />
-            <Line type="monotone" dataKey="equity" stroke="#38bdf8" dot={false} strokeWidth={2} />
-            <Line type="monotone" dataKey="balance" stroke="#94a3b8" dot={false} strokeWidth={1} strokeDasharray="3 3" />
+            <Line type="monotone" dataKey="equity" stroke="#6ab0ff" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="balance" stroke="#7ec99e" dot={false} strokeWidth={1} strokeDasharray="3 3" />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -300,7 +300,7 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (gray) — UTC" />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) — UTC" />
       </div>
 
       {/* Positions + Deals */}
