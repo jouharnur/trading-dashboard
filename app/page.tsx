@@ -345,12 +345,15 @@ function AccountBlock({ acct }: { acct: Account }) {
           <h3>Equity</h3>
           <div className="big">{fmt$(acct.equity)}</div>
           <div className="muted">bal {fmt$(acct.balance)}</div>
+          <div className="muted" style={{ marginTop: 6 }}>
+            day open: <span style={{ fontWeight: 600, color: "#e8ecf1" }}>{fmt$(acct.day_start_equity)}</span>
+          </div>
           {(() => {
             const dayGain = acct.equity - acct.day_start_equity;
             const dayPct = acct.day_start_equity > 0 ? (dayGain / acct.day_start_equity) * 100 : 0;
             return (
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                <span className="muted">today: </span>
+              <div style={{ marginTop: 2, fontSize: 12 }}>
+                <span className="muted">change: </span>
                 <span className={cls(dayGain)} style={{ fontWeight: 600 }}>
                   {fmt$(dayGain)} ({fmtPct(dayPct)})
                 </span>
