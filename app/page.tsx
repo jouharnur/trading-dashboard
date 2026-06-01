@@ -354,28 +354,14 @@ function AccountBlock({ acct }: { acct: Account }) {
           </div>
           {(() => {
             // change = realized_today + floating_now
-            //   realized_today = current balance - balance at midnight
-            //   floating_now   = current unrealized P&L on open positions
-            // This sums to current_equity - day_start_balance.
-            const realized = acct.balance - acct.day_start_balance;
-            const floating = acct.floating;
-            const dayGain = realized + floating;
+            const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
             const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
+            const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
             return (
-              <>
-                <div style={{ marginTop: 2, fontSize: 12 }}>
-                  <span className="muted">change: </span>
-                  <span className={cls(dayGain)} style={{ fontWeight: 600 }}>
-                    {fmt$(dayGain)} ({fmtPct(dayPct)})
-                  </span>
-                </div>
-                <div style={{ marginTop: 2, fontSize: 11 }}>
-                  <span className="muted">  realized: </span>
-                  <span className={cls(realized)}>{fmt$(realized)}</span>
-                  <span className="muted">  floating: </span>
-                  <span className={cls(floating)}>{fmt$(floating)}</span>
-                </div>
-              </>
+              <div style={{ marginTop: 4, fontSize: 14, fontWeight: 600 }}
+                   className={cls(dayGain)}>
+                {arrow} {Math.abs(dayPct).toFixed(2)}%
+              </div>
             );
           })()}
         </div>
