@@ -56,24 +56,25 @@ function statusDot(iso: string | null) {
   return <span className="dot dead" />;
 }
 
-// Compute today's equity high and low from the equity_24h snapshot stream.
-// Filters to >= start-of-day UTC, falls back to current equity if no data.
+// Compute today's FLOATING (unrealized) PnL high and low from the
+// equity_24h snapshot stream. floating = equity - balance per snapshot.
+// Filters to >= start-of-day UTC; falls back to current floating if no data.
 function DayHighLow({ acct }: { acct: Account }) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const sod = today.getTime();
 
-  let high = acct.equity;
-  let low = acct.equity;
+  let high = acct.floating;
+  let low = acct.floating;
   let hiTs: number | null = null;
   let loTs: number | null = null;
 
   for (const p of acct.equity_24h) {
     const t = new Date(p.ts).getTime();
     if (t < sod) continue;
-    const e = Number(p.equity);
-    if (e > high) { high = e; hiTs = t; }
-    if (e < low)  { low  = e; loTs = t; }
+    const f = Number(p.equity) - Number(p.balance);
+    if (f > high) { high = f; hiTs = t; }
+    if (f < low)  { low  = f; loTs = t; }
   }
 
   const spread = high - low;
@@ -82,14 +83,14 @@ function DayHighLow({ acct }: { acct: Account }) {
 
   return (
     <div className="card" style={{ flex: 1, minWidth: 200 }}>
-      <h3>Today High / Low</h3>
+      <h3>Today Floating High / Low</h3>
       <div className="muted">High</div>
-      <div className="big pos">{fmt$(high)}</div>
+      <div className={"big " + cls(high)}>{fmt$(high)}</div>
       <div className="muted" style={{ fontSize: 11 }}>{fmtTime(hiTs)}</div>
       <div className="muted" style={{ marginTop: 8 }}>Low</div>
-      <div className="big neg">{fmt$(low)}</div>
+      <div className={"big " + cls(low)}>{fmt$(low)}</div>
       <div className="muted" style={{ fontSize: 11 }}>{fmtTime(loTs)}</div>
-      <div className="muted" style={{ marginTop: 6 }}>spread {fmt$(spread)}</div>
+      <div className="muted" style={{ marginTop: 6 }}>swing {fmt$(spread)}</div>
     </div>
   );
 }
@@ -181,6 +182,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
       {sorted.length === 0 ? (
         <div className="muted">— no open positions —</div>
       ) : (
+        <div className="scroll-6">
         <table>
           <thead>
             <tr>
@@ -188,8 +190,6 @@ function PositionsTable({ rows }: { rows: Position[] }) {
               <th>Symbol</th>
               <th className="desk-only">Side</th>
               <th>Vol</th>
-              <th className="desk-only">Open</th>
-              <th className="desk-only">Now</th>
               <th>P&amp;L</th>
               <th>Opened (UTC)</th>
               <th className="desk-only">Comment</th>
@@ -202,8 +202,6 @@ function PositionsTable({ rows }: { rows: Position[] }) {
                 <td>{p.symbol}</td>
                 <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
                 <td>{Number(p.volume).toFixed(2)}</td>
-                <td className="desk-only">{Number(p.open_price).toFixed(5)}</td>
-                <td className="desk-only">{Number(p.current_price).toFixed(5)}</td>
                 <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
                 <td className="muted">{fmtOpenTime(p.open_time)}</td>
                 <td className="muted desk-only">{p.comment}</td>
@@ -211,6 +209,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -447,3 +446,4 @@ export default function Page() {
     </div>
   );
 }
+                                                                                               
