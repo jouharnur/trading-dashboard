@@ -138,10 +138,20 @@ export async function GET() {
       });
 
     const acctSnaps = snapshots.filter((s: any) => s.account_tag === a.tag);
-    // First snapshot >= broker-day-start; falls back to current balance/equity.
+    // Pick the snapshot that best represents "equity at broker-day start":
+    //   1. First snapshot at or after SOD_BROKER (preferred — actual day-start value)
+    //   2. Last snapshot BEFORE SOD_BROKER (yesterday's closing equity — still a valid baseline)
+    //   3. Current balance/equity (last resort — produces change=0)
     const todaySnaps = acctSnaps.filter((s: any) => s.ts >= SOD_BROKER);
-    const day_start_balance = todaySnaps.length > 0 ? Number(todaySnaps[0].balance) : Number(a.last_balance ?? 0);
-    const day_start_equity  = todaySnaps.length > 0 ? Number(todaySnaps[0].equity)  : Number(a.last_equity  ?? 0);
+    const yesterdaySnaps = acctSnaps.filter((s: any) => s.ts < SOD_BROKER);
+    let baselineSnap: any = null;
+    if (todaySnaps.length > 0) {
+      baselineSnap = todaySnaps[0];
+    } else if (yesterdaySnaps.length > 0) {
+      baselineSnap = yesterdaySnaps[yesterdaySnaps.length - 1];
+    }
+    const day_start_balance = baselineSnap ? Number(baselineSnap.balance) : Number(a.last_balance ?? 0);
+    const day_start_equity  = baselineSnap ? Number(baselineSnap.equity)  : Number(a.last_equity  ?? 0);
     const equity24h = acctSnaps.filter((s: any) => s.ts >= since24h);
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
