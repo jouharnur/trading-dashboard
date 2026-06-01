@@ -79,6 +79,16 @@ export async function GET() {
       .order("snapshot_ts", { ascending: false })
   ).data ?? [];
 
+  // Most-recent EA log per (account_tag, ea). Pull last 24h and dedup client-side.
+  const recentLogs = (
+    await db
+      .from("ea_logs")
+      .select("account_tag, ea, message, ts")
+      .gte("ts", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
+      .order("ts", { ascending: false })
+      .limit(2000)
+  ).data ?? [];
+
   const deals = (
     await db
       .from("deals")
@@ -139,34 +149,18 @@ export async function GET() {
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
 
+    // Last EA log per EA for this account (recentLogs is sorted ts desc)
+    const lastLogByEa: Record<string, { message: string; ts: string }> = {};
+    for (const r of recentLogs) {
+      if (r.account_tag !== a.tag) continue;
+      if (!lastLogByEa[r.ea]) {
+        lastLogByEa[r.ea] = { message: r.message, ts: r.ts };
+      }
+    }
+
     return {
       tag: a.tag,
       login: a.login,
       server: a.server,
       currency: a.currency,
-      last_seen: a.last_seen,
-      balance: Number(a.last_balance ?? 0),
-      equity: Number(a.last_equity ?? 0),
-      margin: Number(a.last_margin ?? 0),
-      free_margin: Number(a.last_free ?? 0),
-      floating: Number(a.last_profit ?? 0),
-      pnl_today,
-      pnl_week,
-      pnl_month,
-      by_ea_today: byEa,
-      open_positions: positions.filter((p: any) => p.account_tag === a.tag),
-      recent_deals: acctDeals.slice(0, 25),
-      equity_24h: equity24h,
-      equity_7d:  equity7d,
-      equity_30d: equity30d,
-    };
-  });
-
-  return NextResponse.json(
-    {
-      fetched_at: new Date().toISOString(),
-      accounts: perAccount,
-    },
-    { headers: NO_STORE_HEADERS }
-  );
-}
+      last_seen: a.l

@@ -28,6 +28,7 @@ type Account = {
   equity_24h: EquityPt[];
   equity_7d: EquityPt[];
   equity_30d: EquityPt[];
+  last_logs: Record<string, { message: string; ts: string }>;
 };
 
 type Resp = { fetched_at: string; accounts: Account[] };
@@ -253,6 +254,48 @@ function DealsTable({ rows }: { rows: Deal[] }) {
   );
 }
 
+// Friendly relative-time formatter for "log received X ago"
+function ageStr(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "just now";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function LastLogsCard({ acct }: { acct: Account }) {
+  const entries = Object.entries(acct.last_logs || {});
+  return (
+    <div className="card" style={{ flex: 2, minWidth: 360 }}>
+      <h3>Last EA heartbeats</h3>
+      {entries.length === 0 ? (
+        <div className="muted">— no EA logs yet —</div>
+      ) : (
+        <table>
+          <tbody>
+            {entries.map(([ea, info]) => (
+              <tr key={ea}>
+                <td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
+                  <strong>{ea}</strong>
+                  <div className="muted" style={{ fontSize: 11 }}>{ageStr(info.ts)}</div>
+                </td>
+                <td className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+                  {info.message}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function AccountBlock({ acct }: { acct: Account }) {
   const [chart, setChart] = useState<"24h" | "7d" | "30d">("24h");
   const chartData = chart === "24h" ? acct.equity_24h : chart === "7d" ? acct.equity_7d : acct.equity_30d;
@@ -309,6 +352,11 @@ function AccountBlock({ acct }: { acct: Account }) {
           )}
         </div>
         <DayHighLow acct={acct} />
+      </div>
+
+      {/* Last EA heartbeats */}
+      <div style={{ marginTop: 12 }}>
+        <LastLogsCard acct={acct} />
       </div>
 
       {/* Equity chart (full-width) */}
@@ -404,46 +452,4 @@ export default function Page() {
     return (
       <div className="container wide">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
-          <button className="back-btn" onClick={() => setExpanded(null)}>← back</button>
-          <div className="muted">
-            {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading…"}
-          </div>
-        </div>
-        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="container wide">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
-        <div className="muted">
-          {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading…"}
-        </div>
-      </div>
-      {data?.accounts?.length === 0 && (
-        <div className="card">
-          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
-        </div>
-      )}
-
-      {isMobile ? (
-        <div className="mobile-summary-grid">
-          {data?.accounts?.map((a) => (
-            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
-          ))}
-        </div>
-      ) : (
-        <div className="accounts-grid">
-          {data?.accounts?.map((a) => (
-            <div key={a.tag} className="account-col">
-              <AccountBlock acct={a} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-                                                                                               
+          <button className="back-btn" onClick={() => setExpanded(null)}>�
