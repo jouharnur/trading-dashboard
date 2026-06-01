@@ -60,6 +60,11 @@ a { color: #6ab0ff; text-decoration: none; }
   cursor: pointer;
 }
 .back-btn:active { background: #1a2030; }
+
+/* Hide non-essential table columns on mobile */
+@media (max-width: 899px) {
+  .desk-only { display: none; }
+}
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .card {
   background: #141821;

@@ -165,27 +165,27 @@ function PositionsTable({ rows }: { rows: Position[] }) {
         <table>
           <thead>
             <tr>
-              <th>EA</th>
+              <th className="desk-only">EA</th>
               <th>Symbol</th>
-              <th>Side</th>
+              <th className="desk-only">Side</th>
               <th>Vol</th>
-              <th>Open</th>
-              <th>Now</th>
+              <th className="desk-only">Open</th>
+              <th className="desk-only">Now</th>
               <th>P&amp;L</th>
-              <th>Comment</th>
+              <th className="desk-only">Comment</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((p, i) => (
               <tr key={i}>
-                <td>{p.ea}</td>
+                <td className="desk-only">{p.ea}</td>
                 <td>{p.symbol}</td>
-                <td>{p.side === 0 ? "BUY" : "SELL"}</td>
+                <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
                 <td>{Number(p.volume).toFixed(2)}</td>
-                <td>{Number(p.open_price).toFixed(5)}</td>
-                <td>{Number(p.current_price).toFixed(5)}</td>
+                <td className="desk-only">{Number(p.open_price).toFixed(5)}</td>
+                <td className="desk-only">{Number(p.current_price).toFixed(5)}</td>
                 <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
-                <td className="muted">{p.comment}</td>
+                <td className="muted desk-only">{p.comment}</td>
               </tr>
             ))}
           </tbody>
