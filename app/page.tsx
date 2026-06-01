@@ -107,22 +107,30 @@ function EquityChart({ data, title }: { data: EquityPt[]; title: string }) {
     balance: Number(p.balance),
   }));
   return (
-    <div className="card" style={{ flex: 1, minWidth: 360 }}>
+    <div className="card" style={{ flex: 1, minWidth: 360, width: "100%" }}>
       <h3>{title}</h3>
-      <div style={{ width: "100%", height: 220 }}>
+      <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer>
           <LineChart data={points}>
             <CartesianGrid stroke="#232938" />
             <XAxis
               dataKey="t"
               tick={{ fill: "#98a3b3", fontSize: 11 }}
-              tickFormatter={(v) => new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              tickFormatter={(v) => {
+                const d = new Date(v);
+                const hh = String(d.getUTCHours()).padStart(2, "0");
+                const mm = String(d.getUTCMinutes()).padStart(2, "0");
+                return `${hh}:${mm}`;
+              }}
               minTickGap={40}
             />
             <YAxis tick={{ fill: "#98a3b3", fontSize: 11 }} domain={["auto", "auto"]} />
             <Tooltip
               contentStyle={{ background: "#141821", border: "1px solid #232938", fontSize: 12 }}
-              labelFormatter={(v) => new Date(v as number).toLocaleString()}
+              labelFormatter={(v) => {
+                const d = new Date(v as number);
+                return d.toISOString().replace("T", " ").substring(0, 19) + " UTC";
+              }}
               formatter={(v: any) => fmt$(Number(v))}
             />
             <Line type="monotone" dataKey="equity" stroke="#6ab0ff" dot={false} strokeWidth={2} />
@@ -246,32 +254,14 @@ function AccountBlock({ acct }: { acct: Account }) {
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Week</h3>
           <div className={"big " + cls(acct.pnl_week)}>{fmt$(acct.pnl_week)}</div>
+          <div className={"muted " + cls(acct.pnl_month)}>month {fmt$(acct.pnl_month)}</div>
         </div>
-        <div className="card" style={{ flex: 1, minWidth: 160 }}>
-          <h3>Month</h3>
-          <div className={"big " + cls(acct.pnl_month)}>{fmt$(acct.pnl_month)}</div>
-        </div>
-        <FtmoCompliance acct={acct} />
-      </div>
-
-      {/* Equity chart + per-EA */}
-      <div className="row" style={{ marginTop: 12 }}>
-        <div style={{ flex: 2, minWidth: 360 }}>
-          <div className="tabs">
-            {(["24h", "7d", "30d"] as const).map((k) => (
-              <div key={k} className={"tab " + (chart === k ? "active" : "")} onClick={() => setChart(k)}>
-                {k}
-              </div>
-            ))}
-          </div>
-          <EquityChart data={chartData} title="Equity (blue) vs Balance (green)" />
-        </div>
-        <div className="card" style={{ flex: 1, minWidth: 220 }}>
+        <div className="card" style={{ flex: 1, minWidth: 180 }}>
           <h3>Today by EA (closed)</h3>
           {eaRows.length === 0 ? (
-            <div className="muted">— no closed deals today —</div>
+            <div className="muted">— none —</div>
           ) : (
-            <table>
+            <table style={{ marginTop: 2 }}>
               <tbody>
                 {eaRows.map(([ea, v]) => (
                   <tr key={ea}>
@@ -283,6 +273,19 @@ function AccountBlock({ acct }: { acct: Account }) {
             </table>
           )}
         </div>
+        <FtmoCompliance acct={acct} />
+      </div>
+
+      {/* Equity chart (full-width) */}
+      <div style={{ marginTop: 12 }}>
+        <div className="tabs">
+          {(["24h", "7d", "30d"] as const).map((k) => (
+            <div key={k} className={"tab " + (chart === k ? "active" : "")} onClick={() => setChart(k)}>
+              {k}
+            </div>
+          ))}
+        </div>
+        <EquityChart data={chartData} title="Equity (blue) vs Balance (green) — UTC" />
       </div>
 
       {/* Positions + Deals */}
