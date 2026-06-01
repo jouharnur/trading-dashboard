@@ -29,6 +29,8 @@ type Account = {
   equity_7d: EquityPt[];
   equity_30d: EquityPt[];
   last_logs: Record<string, { message: string; ts: string }[]>;
+  day_start_balance: number;
+  day_start_equity: number;
 };
 
 type Resp = { fetched_at: string; accounts: Account[] };
@@ -48,6 +50,12 @@ const tzShift = (msOrIso: number | string) => {
   const t = typeof msOrIso === "number" ? msOrIso : new Date(msOrIso).getTime();
   return new Date(t + TZ_OFFSET_H * 3600 * 1000);
 };
+
+function fmtPct(n: number | null | undefined) {
+  if (n == null || isNaN(n as number)) return "-";
+  const sign = (n as number) >= 0 ? "+" : "";
+  return `${sign}${(n as number).toFixed(2)}%`;
+}
 
 function cls(n: number) {
   if (n > 0) return "pos";
@@ -341,11 +349,17 @@ function AccountBlock({ acct }: { acct: Account }) {
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Floating</h3>
           <div className={"big " + cls(acct.floating)}>{fmt$(acct.floating)}</div>
+          <div className={"muted " + cls(acct.floating)}>
+            {acct.day_start_balance > 0 ? fmtPct((acct.floating / acct.day_start_balance) * 100) : "-"} of day start
+          </div>
           <div className="muted">{acct.open_positions.length} open</div>
         </div>
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Today (closed)</h3>
           <div className={"big " + cls(acct.pnl_today)}>{fmt$(acct.pnl_today)}</div>
+          <div className={"muted " + cls(acct.pnl_today)}>
+            {acct.day_start_equity > 0 ? fmtPct((acct.pnl_today / acct.day_start_equity) * 100) : "-"} of day start
+          </div>
         </div>
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Week</h3>

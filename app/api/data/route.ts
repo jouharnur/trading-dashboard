@@ -111,6 +111,13 @@ export async function GET() {
   const SOW = startOfWeekUTC();
   const SOM = startOfMonthUTC();
 
+  // Broker-day start (UTC+3 midnight expressed as real UTC ISO).
+  // Used to compute "today's % gain" from the first snapshot of the day.
+  const TZ_OFFSET_H = 3;
+  const nowShifted = new Date(Date.now() + TZ_OFFSET_H * 3600 * 1000);
+  nowShifted.setUTCHours(0, 0, 0, 0);
+  const SOD_BROKER = new Date(nowShifted.getTime() - TZ_OFFSET_H * 3600 * 1000).toISOString();
+
   const perAccount = accounts.map((a: any) => {
     const acctDeals = deals.filter((d: any) => d.account_tag === a.tag);
     const sum = (since: string) =>
@@ -131,6 +138,10 @@ export async function GET() {
       });
 
     const acctSnaps = snapshots.filter((s: any) => s.account_tag === a.tag);
+    // First snapshot >= broker-day-start; falls back to current balance/equity.
+    const todaySnaps = acctSnaps.filter((s: any) => s.ts >= SOD_BROKER);
+    const day_start_balance = todaySnaps.length > 0 ? Number(todaySnaps[0].balance) : Number(a.last_balance ?? 0);
+    const day_start_equity  = todaySnaps.length > 0 ? Number(todaySnaps[0].equity)  : Number(a.last_equity  ?? 0);
     const equity24h = acctSnaps.filter((s: any) => s.ts >= since24h);
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
@@ -166,6 +177,8 @@ export async function GET() {
       equity_7d:  equity7d,
       equity_30d: equity30d,
       last_logs: lastLogByEa,
+      day_start_balance,
+      day_start_equity,
     };
   });
 
