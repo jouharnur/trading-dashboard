@@ -28,7 +28,7 @@ type Account = {
   equity_24h: EquityPt[];
   equity_7d: EquityPt[];
   equity_30d: EquityPt[];
-  last_logs: Record<string, { message: string; ts: string }>;
+  last_logs: Record<string, { message: string; ts: string }[]>;
 };
 
 type Resp = { fetched_at: string; accounts: Account[] };
@@ -261,28 +261,45 @@ function ageStr(iso: string | null | undefined) {
 
 function LastLogsCard({ acct }: { acct: Account }) {
   const entries = Object.entries(acct.last_logs || {});
+  // Hide entirely when no EA on this account has posted logs.
+  // (Only V52 is patched to POST; other accounts will have no entries.)
+  if (entries.length === 0) return null;
+
+  // Highlight "interesting" events visually
+  const eventClass = (m: string) => {
+    const u = m.toUpperCase();
+    if (u.includes("FAILED") || u.includes("KILL") || u.includes("HALT")) return "neg";
+    if (u.startsWith("OPEN ") || u.includes("PROFIT_LOCK")) return "pos";
+    if (u.startsWith("CLOSE ")) return "warn";
+    return "muted";
+  };
+
   return (
     <div className="card" style={{ flex: 2, minWidth: 360 }}>
-      <h3>Last EA heartbeats</h3>
-      {entries.length === 0 ? (
-        <div className="muted">- no EA logs yet -</div>
-      ) : (
-        <table>
-          <tbody>
-            {entries.map(([ea, info]) => (
-              <tr key={ea}>
-                <td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
-                  <strong>{ea}</strong>
-                  <div className="muted" style={{ fontSize: 11 }}>{ageStr(info.ts)}</div>
-                </td>
-                <td className="muted" style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-                  {info.message}
-                </td>
-              </tr>
+      <h3>Recent EA events (V52)</h3>
+      {entries.map(([ea, lines]) => (
+        <div key={ea} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4 }}>
+            <strong style={{ color: "#e8ecf1" }}>{ea}</strong> - last update {ageStr(lines[0]?.ts)}
+          </div>
+          <div style={{
+            maxHeight: 220,
+            overflowY: "auto",
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 12,
+            border: "1px solid #232938",
+            borderRadius: 4,
+            padding: 6,
+          }}>
+            {lines.map((l, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0" }}>
+                <span className="muted" style={{ minWidth: 90, fontSize: 11 }}>{ageStr(l.ts)}</span>
+                <span className={eventClass(l.message)}>{l.message}</span>
+              </div>
             ))}
-          </tbody>
-        </table>
-      )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

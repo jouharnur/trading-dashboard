@@ -135,11 +135,13 @@ export async function GET() {
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
 
-    const lastLogByEa: Record<string, { message: string; ts: string }> = {};
+    const MAX_LOGS_PER_EA = 15;
+    const lastLogByEa: Record<string, { message: string; ts: string }[]> = {};
     for (const r of recentLogs) {
       if (r.account_tag !== a.tag) continue;
-      if (!lastLogByEa[r.ea]) {
-        lastLogByEa[r.ea] = { message: r.message, ts: r.ts };
+      if (!lastLogByEa[r.ea]) lastLogByEa[r.ea] = [];
+      if (lastLogByEa[r.ea].length < MAX_LOGS_PER_EA) {
+        lastLogByEa[r.ea].push({ message: r.message, ts: r.ts });
       }
     }
 
