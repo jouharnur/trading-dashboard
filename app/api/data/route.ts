@@ -12,7 +12,6 @@ const NO_STORE_HEADERS = {
   "Vercel-CDN-Cache-Control": "no-store",
 };
 
-// Aggregated snapshot for the dashboard. Polled by the client every ~10s.
 export async function GET() {
   const db = supabaseAdmin();
 
@@ -22,9 +21,6 @@ export async function GET() {
 
   const accounts = (await db.from("accounts").select("*").order("tag")).data ?? [];
 
-  // Pull last 30 days of snapshots once and slice client-side for charts/PnL.
-  // Get the most recent N first (DESC), reverse for chronological charting.
-  // 50k rows covers ~4 days at 30s × 5 accounts before the prune kicks in.
   const snapshotsDesc = (
     await db
       .from("snapshots")
@@ -35,11 +31,7 @@ export async function GET() {
   ).data ?? [];
   const rawSnapshots = snapshotsDesc.slice().reverse();
 
-  // Smooth the equity series by bucketing into 1-minute windows per account.
-  // For each (account, minute) keep ONE point whose equity is the median of
-  // pushes inside that minute — eliminates intra-bar mark-to-market jitter
-  // (equity bounces ±$500 between ticks on a $100K account with open positions)
-  // and also dedupes if two EAs ever pushed under the same tag.
+  // Smooth equity series: 1-minute median bucketing per account.
   const BUCKET_MS = 60_000;
   const buckets = new Map<string, { account_tag: string; ts: string; balance: number; equity: number; open_count: number; eqs: number[] }>();
   for (const s of rawSnapshots) {
@@ -58,7 +50,6 @@ export async function GET() {
       });
     } else {
       existing.eqs.push(Number(s.equity));
-      // balance changes rarely; keep latest
       existing.balance = Number(s.balance);
       existing.open_count = s.open_count ?? existing.open_count;
     }
@@ -79,7 +70,6 @@ export async function GET() {
       .order("snapshot_ts", { ascending: false })
   ).data ?? [];
 
-  // Most-recent EA log per (account_tag, ea). Pull last 24h and dedup client-side.
   const recentLogs = (
     await db
       .from("ea_logs")
@@ -98,7 +88,6 @@ export async function GET() {
       .limit(500)
   ).data ?? [];
 
-  // Helpers
   const startOfDayUTC = () => {
     const d = new Date();
     d.setUTCHours(0, 0, 0, 0);
@@ -107,7 +96,7 @@ export async function GET() {
   const startOfWeekUTC = () => {
     const d = new Date();
     d.setUTCHours(0, 0, 0, 0);
-    const dow = (d.getUTCDay() + 6) % 7; // Monday=0
+    const dow = (d.getUTCDay() + 6) % 7;
     d.setUTCDate(d.getUTCDate() - dow);
     return d.toISOString();
   };
@@ -122,7 +111,6 @@ export async function GET() {
   const SOW = startOfWeekUTC();
   const SOM = startOfMonthUTC();
 
-  // Compute per-account PnL windows from deals (realized only)
   const perAccount = accounts.map((a: any) => {
     const acctDeals = deals.filter((d: any) => d.account_tag === a.tag);
     const sum = (since: string) =>
@@ -134,7 +122,6 @@ export async function GET() {
     const pnl_week  = sum(SOW);
     const pnl_month = sum(SOM);
 
-    // Per-EA breakdown (today)
     const byEa: Record<string, number> = {};
     acctDeals
       .filter((d: any) => d.closed_at >= SOD)
@@ -143,13 +130,11 @@ export async function GET() {
         byEa[ea] = (byEa[ea] || 0) + Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0);
       });
 
-    // Equity curves
     const acctSnaps = snapshots.filter((s: any) => s.account_tag === a.tag);
     const equity24h = acctSnaps.filter((s: any) => s.ts >= since24h);
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
 
-    // Last EA log per EA for this account (recentLogs is sorted ts desc)
     const lastLogByEa: Record<string, { message: string; ts: string }> = {};
     for (const r of recentLogs) {
       if (r.account_tag !== a.tag) continue;
@@ -163,4 +148,30 @@ export async function GET() {
       login: a.login,
       server: a.server,
       currency: a.currency,
-      last_seen: a.l
+      last_seen: a.last_seen,
+      balance: Number(a.last_balance ?? 0),
+      equity: Number(a.last_equity ?? 0),
+      margin: Number(a.last_margin ?? 0),
+      free_margin: Number(a.last_free ?? 0),
+      floating: Number(a.last_profit ?? 0),
+      pnl_today,
+      pnl_week,
+      pnl_month,
+      by_ea_today: byEa,
+      open_positions: positions.filter((p: any) => p.account_tag === a.tag),
+      recent_deals: acctDeals.slice(0, 25),
+      equity_24h: equity24h,
+      equity_7d:  equity7d,
+      equity_30d: equity30d,
+      last_logs: lastLogByEa,
+    };
+  });
+
+  return NextResponse.json(
+    {
+      fetched_at: new Date().toISOString(),
+      accounts: perAccount,
+    },
+    { headers: NO_STORE_HEADERS }
+  );
+}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
 type EquityPt = { account_tag: string; ts: string; balance: number; equity: number; open_count: number };
@@ -36,9 +36,9 @@ type Resp = { fetched_at: string; accounts: Account[] };
 const POLL_MS = 10_000;
 
 function fmt$(n: number | null | undefined) {
-  if (n == null || isNaN(n as number)) return "—";
-  const sign = n < 0 ? "-" : "";
-  const v = Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  if (n == null || isNaN(n as number)) return "-";
+  const sign = (n as number) < 0 ? "-" : "";
+  const v = Math.abs(n as number).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   return `${sign}${v}`;
 }
 function cls(n: number) {
@@ -59,7 +59,6 @@ function statusDot(iso: string | null) {
 
 // Compute today's FLOATING (unrealized) PnL high and low from the
 // equity_24h snapshot stream. floating = equity - balance per snapshot.
-// Filters to >= start-of-day UTC; falls back to current floating if no data.
 function DayHighLow({ acct }: { acct: Account }) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
@@ -99,10 +98,6 @@ function DayHighLow({ acct }: { acct: Account }) {
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-// Tick formatter that switches by chart-window mode.
-//   24h → "HH:MM" UTC
-//    7d → "Mon 14h" UTC (day-of-week + hour)
-//   30d → "May 31" UTC (month + day)
 function chartTickFormatter(mode: "24h" | "7d" | "30d") {
   return (v: number) => {
     const d = new Date(v);
@@ -115,7 +110,6 @@ function chartTickFormatter(mode: "24h" | "7d" | "30d") {
       const hh = String(d.getUTCHours()).padStart(2, "0");
       return `${DOW[d.getUTCDay()]} ${hh}h`;
     }
-    // 30d
     return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`;
   };
 }
@@ -157,11 +151,10 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
   );
 }
 
-// Format an ISO open_time as "MM-DD HH:MM" UTC (compact for table cells).
 function fmtOpenTime(iso: string | null | undefined) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
+  if (isNaN(d.getTime())) return "-";
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
   const hh = String(d.getUTCHours()).padStart(2, "0");
@@ -170,7 +163,6 @@ function fmtOpenTime(iso: string | null | undefined) {
 }
 
 function PositionsTable({ rows }: { rows: Position[] }) {
-  // Newest-opened first; positions without an open_time fall to the bottom.
   const sorted = rows.slice().sort((a, b) => {
     const ta = new Date(a.open_time || 0).getTime();
     const tb = new Date(b.open_time || 0).getTime();
@@ -181,35 +173,35 @@ function PositionsTable({ rows }: { rows: Position[] }) {
     <div className="card" style={{ flex: 2, minWidth: 480 }}>
       <h3>Open positions ({sorted.length})</h3>
       {sorted.length === 0 ? (
-        <div className="muted">— no open positions —</div>
+        <div className="muted">- no open positions -</div>
       ) : (
         <div className="scroll-6">
-        <table>
-          <thead>
-            <tr>
-              <th className="desk-only">EA</th>
-              <th>Symbol</th>
-              <th className="desk-only">Side</th>
-              <th>Vol</th>
-              <th>P&amp;L</th>
-              <th>Opened (UTC)</th>
-              <th className="desk-only">Comment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((p, i) => (
-              <tr key={i}>
-                <td className="desk-only">{p.ea}</td>
-                <td>{p.symbol}</td>
-                <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
-                <td>{Number(p.volume).toFixed(2)}</td>
-                <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
-                <td className="muted">{fmtOpenTime(p.open_time)}</td>
-                <td className="muted desk-only">{p.comment}</td>
+          <table>
+            <thead>
+              <tr>
+                <th className="desk-only">EA</th>
+                <th>Symbol</th>
+                <th className="desk-only">Side</th>
+                <th>Vol</th>
+                <th>P&amp;L</th>
+                <th>Opened (UTC)</th>
+                <th className="desk-only">Comment</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map((p, i) => (
+                <tr key={i}>
+                  <td className="desk-only">{p.ea}</td>
+                  <td>{p.symbol}</td>
+                  <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
+                  <td>{Number(p.volume).toFixed(2)}</td>
+                  <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
+                  <td className="muted">{fmtOpenTime(p.open_time)}</td>
+                  <td className="muted desk-only">{p.comment}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -221,7 +213,7 @@ function DealsTable({ rows }: { rows: Deal[] }) {
     <div className="card" style={{ flex: 2, minWidth: 480 }}>
       <h3>Recent closed deals</h3>
       {rows.length === 0 ? (
-        <div className="muted">— none in the last 30 days —</div>
+        <div className="muted">- none in the last 30 days -</div>
       ) : (
         <table>
           <thead>
@@ -254,9 +246,8 @@ function DealsTable({ rows }: { rows: Deal[] }) {
   );
 }
 
-// Friendly relative-time formatter for "log received X ago"
 function ageStr(iso: string | null | undefined) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const ms = Date.now() - new Date(iso).getTime();
   if (ms < 0) return "just now";
   const s = Math.floor(ms / 1000);
@@ -274,7 +265,7 @@ function LastLogsCard({ acct }: { acct: Account }) {
     <div className="card" style={{ flex: 2, minWidth: 360 }}>
       <h3>Last EA heartbeats</h3>
       {entries.length === 0 ? (
-        <div className="muted">— no EA logs yet —</div>
+        <div className="muted">- no EA logs yet -</div>
       ) : (
         <table>
           <tbody>
@@ -307,11 +298,10 @@ function AccountBlock({ acct }: { acct: Account }) {
       <h2 style={{ fontSize: 18, margin: "16px 0 12px 0" }}>
         {statusDot(acct.last_seen)} {acct.tag}{" "}
         <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
-          #{acct.login} · {acct.server} · {acct.currency}
+          #{acct.login} - {acct.server} - {acct.currency}
         </span>
       </h2>
 
-      {/* Top strip */}
       <div className="row">
         <div className="card" style={{ flex: 1, minWidth: 160 }}>
           <h3>Equity</h3>
@@ -337,7 +327,7 @@ function AccountBlock({ acct }: { acct: Account }) {
         <div className="card" style={{ flex: 1, minWidth: 180 }}>
           <h3>Today by EA (closed)</h3>
           {eaRows.length === 0 ? (
-            <div className="muted">— none —</div>
+            <div className="muted">- none -</div>
           ) : (
             <table style={{ marginTop: 2 }}>
               <tbody>
@@ -354,12 +344,10 @@ function AccountBlock({ acct }: { acct: Account }) {
         <DayHighLow acct={acct} />
       </div>
 
-      {/* Last EA heartbeats */}
       <div style={{ marginTop: 12 }}>
         <LastLogsCard acct={acct} />
       </div>
 
-      {/* Equity chart (full-width) */}
       <div style={{ marginTop: 12 }}>
         <div className="tabs">
           {(["24h", "7d", "30d"] as const).map((k) => (
@@ -368,10 +356,9 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) — UTC" />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC" />
       </div>
 
-      {/* Positions + Deals */}
       <div className="row" style={{ marginTop: 12 }}>
         <PositionsTable rows={acct.open_positions} />
         <DealsTable rows={acct.recent_deals} />
@@ -408,11 +395,10 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
 export default function Page() {
   const [data, setData] = useState<Resp | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  // Detect mobile viewport
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 900);
     check();
@@ -446,10 +432,50 @@ export default function Page() {
     };
   }, []);
 
-  // Mobile expanded view: show only the selected account, with a back button
   if (isMobile && expanded && data) {
     const acct = data.accounts.find((a) => a.tag === expanded);
     return (
       <div className="container wide">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
-          <button className="back-btn" onClick={() => setExpanded(null)}>�
+          <button className="back-btn" onClick={() => setExpanded(null)}>back</button>
+          <div className="muted">
+            {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading..."}
+          </div>
+        </div>
+        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="container wide">
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
+        <div className="muted">
+          {err ? <span className="neg">error: {err}</span> : data ? `updated ${new Date(data.fetched_at).toLocaleTimeString()}` : "loading..."}
+        </div>
+      </div>
+      {data?.accounts?.length === 0 && (
+        <div className="card">
+          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
+        </div>
+      )}
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
