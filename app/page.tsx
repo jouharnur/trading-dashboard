@@ -355,13 +355,23 @@ function AccountBlock({ acct }: { acct: Account }) {
           {(() => {
             const dayGain = acct.equity - acct.day_start_equity;
             const dayPct = acct.day_start_equity > 0 ? (dayGain / acct.day_start_equity) * 100 : 0;
+            const realized = acct.balance - acct.day_start_balance;
+            const floatSwing = acct.floating - (acct.day_start_equity - acct.day_start_balance);
             return (
-              <div style={{ marginTop: 2, fontSize: 12 }}>
-                <span className="muted">change: </span>
-                <span className={cls(dayGain)} style={{ fontWeight: 600 }}>
-                  {fmt$(dayGain)} ({fmtPct(dayPct)})
-                </span>
-              </div>
+              <>
+                <div style={{ marginTop: 2, fontSize: 12 }}>
+                  <span className="muted">change: </span>
+                  <span className={cls(dayGain)} style={{ fontWeight: 600 }}>
+                    {fmt$(dayGain)} ({fmtPct(dayPct)})
+                  </span>
+                </div>
+                <div style={{ marginTop: 2, fontSize: 11 }}>
+                  <span className="muted">  realized: </span>
+                  <span className={cls(realized)}>{fmt$(realized)}</span>
+                  <span className="muted">  floating swing: </span>
+                  <span className={cls(floatSwing)}>{fmt$(floatSwing)}</span>
+                </div>
+              </>
             );
           })()}
         </div>
