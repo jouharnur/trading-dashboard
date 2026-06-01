@@ -50,34 +50,7 @@ a { color: #6ab0ff; text-decoration: none; }
   justify-content: space-between;
   gap: 12px;
 }
-.back-btn {
-  background: #141821;
-  border: 1px solid #232938;
-  color: #e8ecf1;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.back-btn:active { background: #1a2030; }
 
-/* Hide non-essential table columns on mobile */
-@media (max-width: 899px) {
-  .desk-only { display: none; }
-}
-
-/* Scrollable table body — keeps the header sticky, shows ~6 rows then scroll */
-.scroll-6 {
-  max-height: 240px;     /* ~6 rows × 40px including header */
-  overflow-y: auto;
-  position: relative;
-}
-.scroll-6 table thead th {
-  position: sticky;
-  top: 0;
-  background: #141821;
-  z-index: 1;
-}
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .card {
   background: #141821;
@@ -95,14 +68,17 @@ a { color: #6ab0ff; text-decoration: none; }
 }
 .big { font-size: 22px; font-weight: 600; }
 .muted { color: #98a3b3; font-size: 12px; }
+
 /* Softer trading palette. Sage green + dusty coral keep the green/red
    convention readable without spiking cortisol every time you glance. */
 .pos { color: #7ec99e; }   /* sage green */
 .neg { color: #d68a85; }   /* dusty coral */
 .warn { color: #e8b56b; }  /* warm amber */
+
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #232938; }
 th { color: #98a3b3; font-weight: 500; }
+
 .gauge {
   height: 8px;
   background: #232938;
@@ -114,4 +90,30 @@ th { color: #98a3b3; font-weight: 500; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .dot.ok { background: #7ec99e; }
 .dot.stale { background: #e8b56b; }
-.dot.dea
+.dot.dead { background: #d68a85; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab {
+  padding: 6px 12px;
+  background: #141821;
+  border: 1px solid #232938;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #98a3b3;
+}
+.tab.active { background: #1a2030; color: #e8ecf1; border-color: #3a4359; }
+
+.back-btn {
+  background: #141821;
+  border: 1px solid #232938;
+  color: #e8ecf1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.back-btn:active { background: #1a2030; }
+
+/* Hide non-essential table columns on mobile */
+@media (max-width: 899px) {
+  .desk-only { display: none
