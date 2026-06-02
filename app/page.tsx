@@ -226,57 +226,64 @@ function ResetButton({ tag }: { tag: string }) {
   );
 }
 
-// Compute today's FLOATING (unrealized) PnL high and low from the
-// equity_24h snapshot stream. floating = equity - balance per snapshot.
+// Compute today's TOTAL P&L high and low (realized + unrealized combined).
+// total_pnl_at_snapshot = equity(at snapshot) - day_start_equity.
+// This is more correct than floating-only because once positions close they
+// stop contributing to floating but their realized P&L stays in equity.
 function DayHighLow({ acct }: { acct: Account }) {
   // Start of broker-day (UTC+3) = today's UTC midnight + offset, shifted back
   const nowShifted = tzShift(Date.now());
   nowShifted.setUTCHours(0, 0, 0, 0);
   const sod = nowShifted.getTime() - TZ_OFFSET_H * 3600 * 1000;
+  const dayOpen = Number(acct.day_start_equity) || 0;
 
-  let high = acct.floating;
-  let low = acct.floating;
+  // "Now" = today's P&L right now = equity - day_open
+  const nowPnl = dayOpen > 0 ? (acct.equity - dayOpen) : 0;
+  let high = nowPnl;
+  let low = nowPnl;
   let hiTs: number | null = null;
   let loTs: number | null = null;
 
-  for (const p of acct.equity_24h) {
-    const t = new Date(p.ts).getTime();
-    if (t < sod) continue;
-    const f = Number(p.equity) - Number(p.balance);
-    if (f > high) { high = f; hiTs = t; }
-    if (f < low)  { low  = f; loTs = t; }
+  if (dayOpen > 0) {
+    for (const p of acct.equity_24h) {
+      const t = new Date(p.ts).getTime();
+      if (t < sod) continue;
+      const totalPnl = Number(p.equity) - dayOpen;
+      if (totalPnl > high) { high = totalPnl; hiTs = t; }
+      if (totalPnl < low)  { low  = totalPnl; loTs = t; }
+    }
   }
 
   const spread = high - low;
   const fmtTime = (t: number | null) =>
     t == null ? "" : tzShift(t).toISOString().substring(11, 16) + " " + TZ_LABEL;
 
-  // Visual gauge: where does current floating sit between today's low and high?
+  // Visual gauge: where does NOW sit between today's low and high?
   const range = high - low;
-  const pos = range > 0 ? (acct.floating - low) / range : 0.5;
-  const posPct = Math.max(0, Math.min(1, pos)) * 100;
+  const nowPos = range > 0 ? (nowPnl - low) / range : 0.5;
+  const nowPosPct = Math.max(0, Math.min(1, nowPos)) * 100;
   return (
     <div className="card" style={{ flex: 1, minWidth: 220 }}>
-      <h3>Today Floating High / Low</h3>
+      <h3>Today P&L Range (realized + floating)</h3>
       {/* Range bar with current marker */}
       <div style={{ position: "relative", height: 14, background: "#1e2330", borderRadius: 7, marginTop: 6, marginBottom: 16 }}>
-        {/* Zero-line baseline marker */}
+        {/* Zero-line baseline marker (where day-open sits in the range) */}
         {low < 0 && high > 0 && (
           <div style={{
             position: "absolute",
             left: `${range > 0 ? ((0 - low) / range) * 100 : 50}%`,
             top: -2, bottom: -2, width: 1, background: "#e9b94a"
-          }} />
+          }} title="day open" />
         )}
-        {/* Current floating marker */}
+        {/* Current total day-P&L marker */}
         <div style={{
           position: "absolute",
-          left: `calc(${posPct}% - 6px)`,
+          left: `calc(${nowPosPct}% - 6px)`,
           top: -3, width: 12, height: 20,
-          background: acct.floating > 0 ? "#7ec99e" : acct.floating < 0 ? "#e57373" : "#98a3b3",
+          background: nowPnl > 0 ? "#7ec99e" : nowPnl < 0 ? "#e57373" : "#98a3b3",
           borderRadius: 3,
           boxShadow: "0 0 4px rgba(0,0,0,0.5)",
-        }} title={`now: ${fmt$(acct.floating)}`} />
+        }} title={`now: ${fmt$(nowPnl)}`} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
         <div>
@@ -286,8 +293,8 @@ function DayHighLow({ acct }: { acct: Account }) {
         </div>
         <div style={{ textAlign: "center" }}>
           <div className="muted">Now</div>
-          <div className={cls(acct.floating)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
-          <div className="muted" style={{ fontSize: 10 }}>{posPct.toFixed(0)}% of range</div>
+          <div className={cls(nowPnl)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(nowPnl)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>{nowPosPct.toFixed(0)}% of range</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div className="muted">High</div>
@@ -295,7 +302,9 @@ function DayHighLow({ acct }: { acct: Account }) {
           <div className="muted" style={{ fontSize: 10 }}>{fmtTime(hiTs)}</div>
         </div>
       </div>
-      <div className="muted" style={{ marginTop: 8, textAlign: "center", fontSize: 11 }}>swing {fmt$(spread)}</div>
+      <div className="muted" style={{ marginTop: 8, textAlign: "center", fontSize: 11 }}>
+        swing {fmt$(spread)} · day open {fmt$(dayOpen)}
+      </div>
     </div>
   );
 }
@@ -795,3 +804,4 @@ export default function Page() {
     </div>
   );
 }
+                                                                                                                                                                                     
