@@ -448,14 +448,6 @@ function AccountBlock({ acct }: { acct: Account }) {
     <div style={{ marginBottom: 24 }}>
       <h2 style={{ fontSize: 18, margin: "16px 0 12px 0", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span>{statusDot(acct.last_seen)} {acct.tag}</span>
-        {primaryEA(acct) && (
-          <span style={{
-            fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
-            background: "#1f3a93", color: "#fff", letterSpacing: 0.5,
-          }}>
-            {primaryEA(acct)}
-          </span>
-        )}
         <span className="muted" style={{ fontSize: 12 }}>
           #{acct.login} - {acct.server} - {acct.currency}
         </span>
@@ -569,14 +561,6 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
       <div className="mobile-summary-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           {statusDot(acct.last_seen)} <strong>{acct.tag}</strong>
-          {ea && (
-            <span style={{
-              fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 3,
-              background: "#1f3a93", color: "#fff", letterSpacing: 0.5,
-            }}>
-              {ea}
-            </span>
-          )}
         </span>
         <span className={cls(dayGain)} style={{ fontSize: 12, fontWeight: 600 }}>
           {arrow} {Math.abs(dayPct).toFixed(2)}%
