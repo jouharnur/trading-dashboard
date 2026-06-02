@@ -631,10 +631,6 @@ function AccountBlock({ acct }: { acct: Account }) {
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <LastLogsCard acct={acct} />
-      </div>
-
-      <div style={{ marginTop: 12 }}>
         <div className="tabs">
           {(["24h", "7d", "30d"] as const).map((k) => (
             <div key={k} className={"tab " + (chart === k ? "active" : "")} onClick={() => setChart(k)}>
@@ -643,6 +639,10 @@ function AccountBlock({ acct }: { acct: Account }) {
           ))}
         </div>
         <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_equity} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <LastLogsCard acct={acct} />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
