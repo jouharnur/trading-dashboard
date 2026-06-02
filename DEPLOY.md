@@ -210,3 +210,20 @@ curl -X POST https://your-dashboard.vercel.app/api/reset \
 ```
 
 Returns `{ ok: true, tag: "FTMO", reset_at: "2026-06-02T15:23:00.000Z", cleared: false, deleted: {} }`.
+
+---
+
+## Show deal open + close time (2026-06-02)
+
+If you want the "Recent closed deals" table to also show when each deal was
+opened (currently shows only close time), run this Supabase migration and
+push the Telemetry EA patch:
+
+```sql
+alter table deals add column if not exists opened_at timestamptz;
+```
+
+The Telemetry EA needs to send `opened_at` per deal (looked up via
+`HistorySelectByPosition` on the deal's position ID). Until that EA patch
+is deployed, the `Opened` column shows "-" for existing rows — no harm,
+just informational.

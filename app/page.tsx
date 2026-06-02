@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 
 type EquityPt = { account_tag: string; ts: string; balance: number; equity: number; open_count: number };
@@ -71,6 +71,26 @@ function statusDot(iso: string | null) {
   if (m < 5) return <span className="dot ok" />;
   if (m < 30) return <span className="dot stale" />;
   return <span className="dot dead" />;
+}
+
+// Best-guess "primary EA" for an account: the most common ea tag across
+// the by_ea_today buckets, then fall back to open positions, then deals.
+function primaryEA(acct: Account): string {
+  const counts: Record<string, number> = {};
+  for (const k of Object.keys(acct.by_ea_today)) counts[k] = (counts[k] || 0) + 1;
+  for (const p of acct.open_positions || []) {
+    const e = (p as any).ea;
+    if (e && e !== "OTHER") counts[e] = (counts[e] || 0) + 1;
+  }
+  for (const d of acct.recent_deals || []) {
+    const e = (d as any).ea;
+    if (e && e !== "OTHER") counts[e] = (counts[e] || 0) + 1;
+  }
+  let best = "", bestN = 0;
+  for (const [k, n] of Object.entries(counts)) {
+    if (n > bestN) { best = k; bestN = n; }
+  }
+  return best;
 }
 
 function ResetButton({ tag }: { tag: string }) {
@@ -202,7 +222,7 @@ function chartTickFormatter(mode: "24h" | "7d" | "30d") {
   };
 }
 
-function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; mode: "24h" | "7d" | "30d" }) {
+function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title: string; mode: "24h" | "7d" | "30d"; dayStart?: number }) {
   const points = data.map((p) => ({
     t: new Date(p.ts).getTime(),
     equity: Number(p.equity),
@@ -230,6 +250,15 @@ function EquityChart({ data, title, mode }: { data: EquityPt[]; title: string; m
               }}
               formatter={(v: any) => fmt$(Number(v))}
             />
+            {dayStart && dayStart > 0 && (
+              <ReferenceLine
+                y={dayStart}
+                stroke="#e9b94a"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+                label={{ value: `day open ${fmt$(dayStart)}`, position: "insideTopRight", fill: "#e9b94a", fontSize: 10 }}
+              />
+            )}
             <Line type="monotone" dataKey="equity" stroke="#6ab0ff" dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="balance" stroke="#7ec99e" dot={false} strokeWidth={1} strokeDasharray="3 3" />
           </LineChart>
@@ -310,30 +339,39 @@ function DealsTable({ rows }: { rows: Deal[] }) {
         <table>
           <thead>
             <tr>
-              <th>When</th>
+              <th>Opened</th>
+              <th>Closed</th>
               <th>EA</th>
               <th>Symbol</th>
               <th>Side</th>
               <th>Vol</th>
               <th>P&amp;L</th>
+              <th className="desk-only">Comment</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((d, i) => (
-              <tr key={i}>
-                <td className="muted">{(() => {
-                  const x = new Date(d.closed_at);
-                  return x.toISOString().replace("T", " ").substring(0, 16);
-                })()}</td>
-                <td>{d.ea}</td>
-                <td>{d.symbol}</td>
-                <td>{d.side === 0 ? "BUY" : "SELL"}</td>
-                <td>{Number(d.volume).toFixed(2)}</td>
-                <td className={cls(Number(d.profit))}>
-                  {fmt$(Number(d.profit) + Number(d.swap ?? 0) + Number(d.commission ?? 0))}
-                </td>
-              </tr>
-            ))}
+            {rows.map((d, i) => {
+              const closedTs = d.closed_at ? new Date(d.closed_at) : null;
+              const openedTs = (d as any).opened_at ? new Date((d as any).opened_at) : null;
+              const fmtTs = (x: Date | null) =>
+                x ? x.toISOString().replace("T", " ").substring(5, 16) : "-";
+              return (
+                <tr key={i}>
+                  <td className="muted">{fmtTs(openedTs)}</td>
+                  <td className="muted">{fmtTs(closedTs)}</td>
+                  <td>{d.ea}</td>
+                  <td>{d.symbol}</td>
+                  <td>{d.side === 0 ? "BUY" : "SELL"}</td>
+                  <td>{Number(d.volume).toFixed(2)}</td>
+                  <td className={cls(Number(d.profit))}>
+                    {fmt$(Number(d.profit) + Number(d.swap ?? 0) + Number(d.commission ?? 0))}
+                  </td>
+                  <td className="desk-only muted" style={{ fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {(d as any).comment || ""}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         </div>
@@ -410,6 +448,14 @@ function AccountBlock({ acct }: { acct: Account }) {
     <div style={{ marginBottom: 24 }}>
       <h2 style={{ fontSize: 18, margin: "16px 0 12px 0", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span>{statusDot(acct.last_seen)} {acct.tag}</span>
+        {primaryEA(acct) && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
+            background: "#1f3a93", color: "#fff", letterSpacing: 0.5,
+          }}>
+            {primaryEA(acct)}
+          </span>
+        )}
         <span className="muted" style={{ fontSize: 12 }}>
           #{acct.login} - {acct.server} - {acct.currency}
         </span>
@@ -491,7 +537,7 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_equity} />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
@@ -506,27 +552,67 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
   const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
   const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
   const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
+  const ea = primaryEA(acct);
+
+  // Build today's equity sparkline: filter equity_24h to broker-day start, plot equity.
+  const sodMs = (() => {
+    const n = tzShift(Date.now());
+    n.setUTCHours(0, 0, 0, 0);
+    return n.getTime() - TZ_OFFSET_H * 3600 * 1000;
+  })();
+  const sparkData = (acct.equity_24h || [])
+    .filter((p) => new Date(p.ts).getTime() >= sodMs)
+    .map((p) => ({ t: new Date(p.ts).getTime(), equity: Number(p.equity) }));
+
   return (
     <div className="card mobile-summary" onClick={onClick} role="button">
-      <div className="mobile-summary-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>{statusDot(acct.last_seen)} <strong>{acct.tag}</strong></span>
-        <span className={cls(dayGain)} style={{ fontSize: 14, fontWeight: 600 }}>
+      <div className="mobile-summary-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {statusDot(acct.last_seen)} <strong>{acct.tag}</strong>
+          {ea && (
+            <span style={{
+              fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 3,
+              background: "#1f3a93", color: "#fff", letterSpacing: 0.5,
+            }}>
+              {ea}
+            </span>
+          )}
+        </span>
+        <span className={cls(dayGain)} style={{ fontSize: 12, fontWeight: 600 }}>
           {arrow} {Math.abs(dayPct).toFixed(2)}%
         </span>
       </div>
-      <div className="mobile-summary-row">
+      <div className="mobile-summary-row" style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
         <div>
-          <div className="muted">Equity</div>
-          <div className="big">{fmt$(acct.equity)}</div>
-          <div className="muted">bal {fmt$(acct.balance)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>Equity</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>bal {fmt$(acct.balance)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div className="muted">Floating</div>
-          <div className={"big " + cls(acct.floating)}>{fmt$(acct.floating)}</div>
-          <div className={"muted " + cls(acct.pnl_today)}>today {fmt$(acct.pnl_today)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>Floating</div>
+          <div className={cls(acct.floating)} style={{ fontSize: 15, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
+          <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 10 }}>today {fmt$(acct.pnl_today)}</div>
         </div>
       </div>
-      <div className="muted" style={{ textAlign: "center", marginTop: 8, fontSize: 11 }}>
+      {sparkData.length >= 2 && acct.day_start_equity > 0 && (
+        <div style={{ height: 50, marginTop: 8 }}>
+          <ResponsiveContainer>
+            <LineChart data={sparkData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+              <YAxis hide domain={["auto", "auto"]} />
+              <ReferenceLine y={acct.day_start_equity} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
+              <Line
+                type="monotone"
+                dataKey="equity"
+                stroke={dayGain >= 0 ? "#6ab0ff" : "#e57373"}
+                dot={false}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      <div className="muted" style={{ textAlign: "center", marginTop: 4, fontSize: 10 }}>
         tap for details
       </div>
     </div>

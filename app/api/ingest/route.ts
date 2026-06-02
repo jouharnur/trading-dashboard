@@ -35,6 +35,7 @@ type Deal = {
   magic: number;
   comment: string;
   time: string;
+  opened_at?: string;
   ea: string;
 };
 
@@ -158,6 +159,7 @@ export async function POST(req: NextRequest) {
       magic: d.magic,
       comment: d.comment,
       closed_at: d.time,
+      opened_at: d.opened_at ?? null,
       ea: d.ea,
     }));
     const dealErr = (
