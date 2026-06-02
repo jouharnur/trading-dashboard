@@ -501,9 +501,6 @@ function ageStr(iso: string | null | undefined) {
 
 function LastLogsCard({ acct }: { acct: Account }) {
   const entries = Object.entries(acct.last_logs || {});
-  // Hide entirely when no EA on this account has posted logs.
-  // (Only V52 is patched to POST; other accounts will have no entries.)
-  if (entries.length === 0) return null;
 
   // Highlight "interesting" events visually
   const eventClass = (m: string) => {
@@ -517,6 +514,15 @@ function LastLogsCard({ acct }: { acct: Account }) {
   return (
     <div className="card" style={{ flex: 2, minWidth: 360 }}>
       <h3>Recent EA events (last 24h)</h3>
+      {entries.length === 0 && (
+        <div className="muted" style={{ fontSize: 12, padding: "12px 4px" }}>
+          No EA events received in the last 24h for this account.<br />
+          If you just restarted: heartbeats fire every <code>Inp_HeartbeatTicks × Inp_TimerSec</code> seconds
+          (default 30×30 = 15 min; lower <code>Inp_HeartbeatTicks</code> to 4 for ~2 min cadence).
+          Also confirm the dashboard URL is in MT5&apos;s WebRequest allowlist and that
+          <code>Inp_AccountTag</code> matches this account&apos;s tag exactly.
+        </div>
+      )}
       {entries.map(([ea, lines]) => (
         <div key={ea} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
