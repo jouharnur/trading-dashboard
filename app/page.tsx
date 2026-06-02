@@ -139,27 +139,89 @@ function ResetButton({ tag }: { tag: string }) {
       setBusy(false);
     }
   };
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && !t.closest(`[data-reset-menu="${tag}"]`)) setMenuOpen(false);
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [menuOpen, tag]);
+
   return (
-    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}>
-      {msg && <span style={{ fontSize: 11, color: "#8aa" }}>{msg}</span>}
+    <span data-reset-menu={tag} style={{ position: "relative", display: "inline-flex", alignItems: "center", marginLeft: 8 }}>
+      {msg && <span style={{ fontSize: 11, color: "#8aa", marginRight: 6 }}>{msg}</span>}
       <button
         disabled={busy}
-        onClick={() => doReset(false)}
-        title="Hide all data before this moment (reversible in Supabase)"
-        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #444",
-                 background: "#222", color: "#bbb", cursor: busy ? "wait" : "pointer" }}
+        onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+        title="Account actions"
+        aria-label="Account actions"
+        style={{
+          fontSize: 16, lineHeight: 1, padding: "2px 8px", borderRadius: 4,
+          border: "1px solid #444", background: "#222", color: "#ccc",
+          cursor: busy ? "wait" : "pointer", fontWeight: 700,
+        }}
       >
-        {busy ? "..." : "Reset"}
+        {busy ? "..." : "⋮"}
       </button>
-      <button
-        disabled={busy}
-        onClick={() => doReset(true)}
-        title="Reset AND physically delete rows (irreversible)"
-        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #623",
-                 background: "#2a1014", color: "#f88", cursor: busy ? "wait" : "pointer" }}
-      >
-        Reset+Wipe
-      </button>
+      {menuOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            minWidth: 170,
+            background: "#141821",
+            border: "1px solid #2a2f3d",
+            borderRadius: 6,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+            zIndex: 50,
+            padding: 4,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <button
+            onClick={() => { setMenuOpen(false); doReset(false); }}
+            title="Hide all data before this moment (reversible in Supabase)"
+            style={{
+              textAlign: "left",
+              fontSize: 12,
+              padding: "8px 10px",
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              color: "#cfd5e0",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#1f2530")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            Reset
+          </button>
+          <button
+            onClick={() => { setMenuOpen(false); doReset(true); }}
+            title="Reset AND physically delete rows (irreversible)"
+            style={{
+              textAlign: "left",
+              fontSize: 12,
+              padding: "8px 10px",
+              borderRadius: 4,
+              border: "none",
+              background: "transparent",
+              color: "#f78a8a",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#2a1014")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            Reset + Wipe
+          </button>
+        </div>
+      )}
     </span>
   );
 }
