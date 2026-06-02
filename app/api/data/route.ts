@@ -31,7 +31,7 @@ export async function GET() {
     const r = resetAt[account_tag];
     if (!r) return true;
     if (!ts) return false;
-    return new Date(ts).getTime() >= new Date(r).getTime();
+    return new Date(ts).getTime() > new Date(r).getTime();
   };
 
   const snapshotsDesc = (

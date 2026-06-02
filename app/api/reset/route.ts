@@ -85,13 +85,16 @@ export async function POST(req: NextRequest) {
         { name: "deals",     col: "closed_at" },
         { name: "ea_logs",   col: "ts" },
       ];
+      // HARD wipe: delete ALL rows for this account_tag regardless of timestamp.
+      // (Earlier behavior only deleted rows older than reset_at, which left
+      //  deals that closed at or after the reset moment in place. With reset_at
+      //  also set, the data API will hide anything from before reset_at, so
+      //  hard-wiping all rows is safe and gives a true clean slate.)
       for (const t of tables) {
-        // Supabase requires the count option in select to get a real count back.
         const del = await db
           .from(t.name)
           .delete({ count: "exact" })
-          .eq("account_tag", tag)
-          .lt(t.col, nowIso);
+          .eq("account_tag", tag);
         deleted[t.name] = {
           count: del.count ?? null,
           error: del.error ? del.error.message : null,
