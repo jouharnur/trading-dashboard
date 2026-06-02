@@ -94,7 +94,23 @@ function ResetButton({ tag }: { tag: string }) {
         body: JSON.stringify({ tag, clear }),
       });
       const j = await res.json();
-      if (!res.ok) { setMsg(j.error || `error ${res.status}`); return; }
+      if (!res.ok) {
+        const errMsg = j.error || `HTTP ${res.status}`;
+        const hint = j.hint ? `\n\nHint: ${j.hint}` : "";
+        const diag = j.diag ? `\n\nDiagnostics:\n${JSON.stringify(j.diag, null, 2)}` : "";
+        window.alert(`Reset failed.\n\n${errMsg}${hint}${diag}`);
+        setMsg(errMsg);
+        return;
+      }
+      // Success path — show what got deleted if wipe was requested
+      if (clear && j.deleted) {
+        const lines = Object.entries(j.deleted).map(
+          ([k, v]: [string, any]) => `  ${k}: ${v.count ?? "?"} rows${v.error ? " (ERROR: " + v.error + ")" : ""}`
+        ).join("\n");
+        window.alert(`Reset+wipe done for ${tag}.\n\nDeleted:\n${lines}`);
+      } else {
+        window.alert(`Reset done for ${tag}. reset_at=${j.reset_at}`);
+      }
       setMsg(clear ? "Reset+wiped" : "Reset");
       setTimeout(() => window.location.reload(), 800);
     } catch (e: any) {

@@ -9,66 +9,102 @@ export const dynamic = "force-dynamic";
 // Headers: x-reset-token must match RESET_TOKEN env var
 //
 // Behaviour:
-//   - Sets accounts.reset_at = now() for the given tag. All snapshots/deals/
-//     positions/ea_logs older than this timestamp will be hidden by /api/data.
-//   - If `clear` is true, ALSO physically deletes rows older than the new
-//     reset_at (frees Supabase storage).
-//   - Also clears last_balance/last_equity/last_profit on the account row so
-//     the headline numbers show fresh state until the next EA push.
+//   - Sets accounts.reset_at = now(). /api/data hides rows older than that.
+//   - If clear=true: physically deletes rows in snapshots / positions / deals
+//     / ea_logs older than the new reset_at (frees free-tier storage).
+//   - Also nulls last_balance / last_equity / last_profit so headline numbers
+//     show fresh state until the EA's next push.
 export async function POST(req: NextRequest) {
-  const token = req.headers.get("x-reset-token");
-  const expected = process.env.RESET_TOKEN;
-  if (!expected || token !== expected) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  let body: any;
-  try { body = await req.json(); } catch { body = {}; }
-  const tag = String(body.tag || "").trim();
-  const clear = body.clear === true;
-  if (!tag) return NextResponse.json({ error: "tag required" }, { status: 400 });
-
-  const db = supabaseAdmin();
-  const nowIso = new Date().toISOString();
-
-  // Verify account exists
-  const acct = (await db.from("accounts").select("tag").eq("tag", tag).maybeSingle()).data;
-  if (!acct) return NextResponse.json({ error: `account ${tag} not found` }, { status: 404 });
-
-  // Set reset_at + clear cached headline numbers
-  const upd = await db.from("accounts")
-    .update({
-      reset_at: nowIso,
-      last_balance: null,
-      last_equity: null,
-      last_margin: null,
-      last_free: null,
-      last_profit: null,
-    })
-    .eq("tag", tag);
-  if (upd.error) return NextResponse.json({ error: upd.error.message }, { status: 500 });
-
-  const deleted: Record<string, number | null> = {};
-  if (clear) {
-    // Physically wipe old data for this account
-    const tables = [
-      { name: "snapshots", col: "ts" },
-      { name: "positions", col: "snapshot_ts" },
-      { name: "deals",     col: "closed_at" },
-      { name: "ea_logs",   col: "ts" },
-    ];
-    for (const t of tables) {
-      const del = await db.from(t.name).delete().eq("account_tag", tag).lt(t.col, nowIso);
-      deleted[t.name] = del.error ? null : (del.count ?? null);
-      if (del.error) console.error(`reset ${t.name}:`, del.error.message);
+  const diag: any = {};
+  try {
+    const token = req.headers.get("x-reset-token");
+    const expected = process.env.RESET_TOKEN;
+    if (!expected) {
+      return NextResponse.json(
+        { error: "RESET_TOKEN env var not set on the server. Add it in Vercel project settings and redeploy." },
+        { status: 500 }
+      );
     }
-  }
+    if (token !== expected) {
+      return NextResponse.json({ error: "unauthorized (token mismatch)" }, { status: 401 });
+    }
 
-  return NextResponse.json({
-    ok: true,
-    tag,
-    reset_at: nowIso,
-    cleared: clear,
-    deleted,
-  });
+    let body: any;
+    try { body = await req.json(); } catch { body = {}; }
+    const tag = String(body.tag || "").trim();
+    const clear = body.clear === true;
+    if (!tag) return NextResponse.json({ error: "tag required in body" }, { status: 400 });
+    diag.tag = tag;
+    diag.clear = clear;
+
+    const db = supabaseAdmin();
+    const nowIso = new Date().toISOString();
+    diag.reset_at = nowIso;
+
+    // Verify account exists
+    const acctRes = await db.from("accounts").select("tag, reset_at").eq("tag", tag).maybeSingle();
+    if (acctRes.error) {
+      return NextResponse.json({ error: `accounts query failed: ${acctRes.error.message}`, diag }, { status: 500 });
+    }
+    if (!acctRes.data) {
+      return NextResponse.json({ error: `account '${tag}' not found in accounts table`, diag }, { status: 404 });
+    }
+    diag.prev_reset_at = acctRes.data.reset_at ?? null;
+
+    // Set reset_at + clear cached headline numbers
+    const upd = await db
+      .from("accounts")
+      .update({
+        reset_at: nowIso,
+        last_balance: null,
+        last_equity: null,
+        last_margin: null,
+        last_free: null,
+        last_profit: null,
+      })
+      .eq("tag", tag);
+    if (upd.error) {
+      // Most likely cause: migration not run -> column reset_at doesn't exist.
+      return NextResponse.json(
+        {
+          error: `accounts.update failed: ${upd.error.message}`,
+          hint: "If error mentions 'reset_at' or 'column ... does not exist', run the migration: alter table accounts add column if not exists reset_at timestamptz;",
+          diag,
+        },
+        { status: 500 }
+      );
+    }
+    diag.accounts_updated = true;
+
+    const deleted: Record<string, { count: number | null; error: string | null }> = {};
+    if (clear) {
+      // Physically wipe old data for this account
+      const tables: { name: string; col: string }[] = [
+        { name: "snapshots", col: "ts" },
+        { name: "positions", col: "snapshot_ts" },
+        { name: "deals",     col: "closed_at" },
+        { name: "ea_logs",   col: "ts" },
+      ];
+      for (const t of tables) {
+        // Supabase requires the count option in select to get a real count back.
+        const del = await db
+          .from(t.name)
+          .delete({ count: "exact" })
+          .eq("account_tag", tag)
+          .lt(t.col, nowIso);
+        deleted[t.name] = {
+          count: del.count ?? null,
+          error: del.error ? del.error.message : null,
+        };
+      }
+    }
+    diag.deleted = deleted;
+
+    return NextResponse.json({ ok: true, ...diag });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: `unhandled exception: ${e?.message ?? String(e)}`, diag },
+      { status: 500 }
+    );
+  }
 }
