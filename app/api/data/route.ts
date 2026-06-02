@@ -21,6 +21,19 @@ export async function GET() {
 
   const accounts = (await db.from("accounts").select("*").order("tag")).data ?? [];
 
+  // Per-account reset cutoff — all rows older than this are hidden.
+  // If reset_at is null, no filter is applied for that account.
+  const resetAt: Record<string, string> = {};
+  for (const a of accounts as any[]) {
+    if (a.reset_at) resetAt[a.tag] = a.reset_at as string;
+  }
+  const passesReset = (account_tag: string, ts: string | null | undefined) => {
+    const r = resetAt[account_tag];
+    if (!r) return true;
+    if (!ts) return false;
+    return new Date(ts).getTime() >= new Date(r).getTime();
+  };
+
   const snapshotsDesc = (
     await db
       .from("snapshots")
@@ -29,7 +42,7 @@ export async function GET() {
       .order("ts", { ascending: false })
       .limit(50000)
   ).data ?? [];
-  const rawSnapshots = snapshotsDesc.slice().reverse();
+  const rawSnapshots = snapshotsDesc.slice().reverse().filter((s: any) => passesReset(s.account_tag, s.ts));
 
   // Smooth equity series: 1-minute median bucketing per account.
   const BUCKET_MS = 60_000;
@@ -63,30 +76,30 @@ export async function GET() {
     .map((b) => ({ account_tag: b.account_tag, ts: b.ts, balance: b.balance, equity: median(b.eqs), open_count: b.open_count }))
     .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
-  const positions = (
+  const positions = ((
     await db
       .from("positions")
       .select("*")
       .order("snapshot_ts", { ascending: false })
-  ).data ?? [];
+  ).data ?? []).filter((p: any) => passesReset(p.account_tag, p.snapshot_ts));
 
-  const recentLogs = (
+  const recentLogs = ((
     await db
       .from("ea_logs")
       .select("account_tag, ea, message, ts")
       .gte("ts", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
       .order("ts", { ascending: false })
       .limit(2000)
-  ).data ?? [];
+  ).data ?? []).filter((r: any) => passesReset(r.account_tag, r.ts));
 
-  const deals = (
+  const deals = ((
     await db
       .from("deals")
       .select("*")
       .gte("closed_at", since30d)
       .order("closed_at", { ascending: false })
       .limit(500)
-  ).data ?? [];
+  ).data ?? []).filter((d: any) => passesReset(d.account_tag, d.closed_at));
 
   const startOfDayUTC = () => {
     const d = new Date();
@@ -171,32 +184,4 @@ export async function GET() {
       login: a.login,
       server: a.server,
       currency: a.currency,
-      last_seen: a.last_seen,
-      balance: Number(a.last_balance ?? 0),
-      equity: Number(a.last_equity ?? 0),
-      margin: Number(a.last_margin ?? 0),
-      free_margin: Number(a.last_free ?? 0),
-      floating: Number(a.last_profit ?? 0),
-      pnl_today,
-      pnl_week,
-      pnl_month,
-      by_ea_today: byEa,
-      open_positions: positions.filter((p: any) => p.account_tag === a.tag),
-      recent_deals: acctDeals.slice(0, 25),
-      equity_24h: equity24h,
-      equity_7d:  equity7d,
-      equity_30d: equity30d,
-      last_logs: lastLogByEa,
-      day_start_balance,
-      day_start_equity,
-    };
-  });
-
-  return NextResponse.json(
-    {
-      fetched_at: new Date().toISOString(),
-      accounts: perAccount,
-    },
-    { headers: NO_STORE_HEADERS }
-  );
-}
+      last_seen: a.last_

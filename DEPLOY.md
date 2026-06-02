@@ -170,3 +170,43 @@ You're not locked in.
 - Total: **$0/mo**
 
 If you exceed: Vercel Pro $20/mo, Supabase Pro $25/mo. Neither is likely for a personal dashboard.
+
+---
+
+## Reset for a new broker account (2026-06-02)
+
+When you swap to a fresh FTMO (or Pepperstone) login but keep the same EA `account_tag`,
+the dashboard would otherwise still show the old account's history.
+
+### One-time setup
+
+1. **Run the migration** (Supabase SQL Editor):
+   ```sql
+   alter table accounts add column if not exists reset_at timestamptz;
+   ```
+2. **Add a Vercel env var** (Project Settings → Environment Variables):
+   - `RESET_TOKEN` = some long random string (this protects the reset endpoint)
+   - Redeploy after adding.
+
+### How to reset
+
+In the dashboard header you'll now see two buttons next to each account:
+
+- **Reset** — sets `accounts.reset_at = now()`. All `snapshots`, `deals`, `positions`,
+  and `ea_logs` older than that moment are HIDDEN from queries but stay in the database.
+  Reversible by manually setting `reset_at = null` in Supabase.
+- **Reset+Wipe** — same, but ALSO physically deletes the old rows. Irreversible. Frees
+  storage on the Supabase free tier.
+
+Both prompt for the `RESET_TOKEN` value (typed into a confirm dialog, not stored).
+
+### Manual reset (no UI)
+
+```bash
+curl -X POST https://your-dashboard.vercel.app/api/reset \
+  -H "x-reset-token: YOUR_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"tag":"FTMO","clear":false}'
+```
+
+Returns `{ ok: true, tag: "FTMO", reset_at: "2026-06-02T15:23:00.000Z", cleared: false, deleted: {} }`.

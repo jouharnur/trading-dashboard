@@ -73,6 +73,66 @@ function statusDot(iso: string | null) {
   return <span className="dot dead" />;
 }
 
+// Reset button — hides all pre-reset data for an account. The dashboard
+// keeps the row in `accounts` but applies a reset_at filter to every query.
+// Optional "clear" mode also physically deletes rows for free Supabase storage.
+function ResetButton({ tag }: { tag: string }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const doReset = async (clear: boolean) => {
+    const ok = window.confirm(
+      `Reset ${tag}?\n\n${clear
+        ? "This will DELETE all snapshots/deals/positions/logs older than now."
+        : "This will hide all data older than now. Data stays in the database."
+      }\n\nA password token is required (set RESET_TOKEN env var).`
+    );
+    if (!ok) return;
+    const token = window.prompt(`Reset token for ${tag}:`);
+    if (!token) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/reset", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-reset-token": token },
+        body: JSON.stringify({ tag, clear }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setMsg(j.error || `error ${res.status}`); return; }
+      setMsg(clear ? "Reset + cleared" : "Reset");
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e: any) {
+      setMsg(e?.message || "failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+      {msg && <span style={{ fontSize: 11, color: "#8aa" }}>{msg}</span>}
+      <button
+        className="reset-btn"
+        disabled={busy}
+        onClick={() => doReset(false)}
+        title="Hide all data before this moment (reversible)"
+        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #444",
+                 background: "#222", color: "#bbb", cursor: busy ? "wait" : "pointer" }}
+      >
+        {busy ? "..." : "Reset"}
+      </button>
+      <button
+        className="reset-btn"
+        disabled={busy}
+        onClick={() => doReset(true)}
+        title="Reset AND physically delete rows (irreversible)"
+        style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #623",
+                 background: "#2a1014", color: "#f88", cursor: busy ? "wait" : "pointer" }}
+      >
+        Reset+Wipe
+      </button>
+    </span>
+  );
+}
+
 // Compute today's FLOATING (unrealized) PnL high and low from the
 // equity_24h snapshot stream. floating = equity - balance per snapshot.
 function DayHighLow({ acct }: { acct: Account }) {
@@ -337,11 +397,12 @@ function AccountBlock({ acct }: { acct: Account }) {
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <h2 style={{ fontSize: 18, margin: "16px 0 12px 0" }}>
-        {statusDot(acct.last_seen)} {acct.tag}{" "}
-        <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
+      <h2 style={{ fontSize: 18, margin: "16px 0 12px 0", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <span>{statusDot(acct.last_seen)} {acct.tag}</span>
+        <span className="muted" style={{ fontSize: 12 }}>
           #{acct.login} - {acct.server} - {acct.currency}
         </span>
+        <ResetButton tag={acct.tag} />
       </h2>
 
       <div className="row">
@@ -472,80 +533,4 @@ export default function Page() {
     const check = () => setIsMobile(window.innerWidth < 900);
     check();
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    const fetchOnce = async () => {
-      try {
-        const r = await fetch("/api/data", { cache: "no-store" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = (await r.json()) as Resp;
-        if (alive) {
-          setData(j);
-          setErr(null);
-        }
-      } catch (e: any) {
-        if (alive) setErr(e?.message || "fetch failed");
-      }
-    };
-    fetchOnce();
-    const id = setInterval(() => {
-      setTick((t) => t + 1);
-      fetchOnce();
-    }, POLL_MS);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-
-  if (isMobile && expanded && data) {
-    const acct = data.accounts.find((a) => a.tag === expanded);
-    return (
-      <div className="container wide">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
-          <button className="back-btn" onClick={() => setExpanded(null)}>back</button>
-          <div className="muted">
-            {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
-          </div>
-        </div>
-        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="container wide">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
-        <div className="muted">
-          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
-        </div>
-      </div>
-      {data?.accounts?.length === 0 && (
-        <div className="card">
-          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
-        </div>
-      )}
-
-
-      {isMobile ? (
-        <div className="mobile-summary-grid">
-          {data?.accounts?.map((a) => (
-            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
-          ))}
-        </div>
-      ) : (
-        <div className="accounts-grid">
-          {data?.accounts?.map((a) => (
-            <div key={a.tag} className="account-col">
-              <AccountBlock acct={a} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+    return () => window.removeEventListener(
