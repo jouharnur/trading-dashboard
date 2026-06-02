@@ -73,9 +73,6 @@ function statusDot(iso: string | null) {
   return <span className="dot dead" />;
 }
 
-// Reset button — hides all pre-reset data for an account. The dashboard
-// keeps the row in `accounts` but applies a reset_at filter to every query.
-// Optional "clear" mode also physically deletes rows for free Supabase storage.
 function ResetButton({ tag }: { tag: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -84,7 +81,7 @@ function ResetButton({ tag }: { tag: string }) {
       `Reset ${tag}?\n\n${clear
         ? "This will DELETE all snapshots/deals/positions/logs older than now."
         : "This will hide all data older than now. Data stays in the database."
-      }\n\nA password token is required (set RESET_TOKEN env var).`
+      }\n\nA reset token is required (set RESET_TOKEN env var on Vercel).`
     );
     if (!ok) return;
     const token = window.prompt(`Reset token for ${tag}:`);
@@ -98,7 +95,7 @@ function ResetButton({ tag }: { tag: string }) {
       });
       const j = await res.json();
       if (!res.ok) { setMsg(j.error || `error ${res.status}`); return; }
-      setMsg(clear ? "Reset + cleared" : "Reset");
+      setMsg(clear ? "Reset+wiped" : "Reset");
       setTimeout(() => window.location.reload(), 800);
     } catch (e: any) {
       setMsg(e?.message || "failed");
@@ -107,20 +104,18 @@ function ResetButton({ tag }: { tag: string }) {
     }
   };
   return (
-    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}>
       {msg && <span style={{ fontSize: 11, color: "#8aa" }}>{msg}</span>}
       <button
-        className="reset-btn"
         disabled={busy}
         onClick={() => doReset(false)}
-        title="Hide all data before this moment (reversible)"
+        title="Hide all data before this moment (reversible in Supabase)"
         style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, border: "1px solid #444",
                  background: "#222", color: "#bbb", cursor: busy ? "wait" : "pointer" }}
       >
         {busy ? "..." : "Reset"}
       </button>
       <button
-        className="reset-btn"
         disabled={busy}
         onClick={() => doReset(true)}
         title="Reset AND physically delete rows (irreversible)"
@@ -533,4 +528,80 @@ export default function Page() {
     const check = () => setIsMobile(window.innerWidth < 900);
     check();
     window.addEventListener("resize", check);
-    return () => window.removeEventListener(
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const fetchOnce = async () => {
+      try {
+        const r = await fetch("/api/data", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as Resp;
+        if (alive) {
+          setData(j);
+          setErr(null);
+        }
+      } catch (e: any) {
+        if (alive) setErr(e?.message || "fetch failed");
+      }
+    };
+    fetchOnce();
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+      fetchOnce();
+    }, POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  if (isMobile && expanded && data) {
+    const acct = data.accounts.find((a) => a.tag === expanded);
+    return (
+      <div className="container wide">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
+          <button className="back-btn" onClick={() => setExpanded(null)}>back</button>
+          <div className="muted">
+            {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
+          </div>
+        </div>
+        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="container wide">
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
+        <div className="muted">
+          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
+        </div>
+      </div>
+      {data?.accounts?.length === 0 && (
+        <div className="card">
+          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
+        </div>
+      )}
+
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

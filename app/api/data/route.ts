@@ -21,13 +21,13 @@ export async function GET() {
 
   const accounts = (await db.from("accounts").select("*").order("tag")).data ?? [];
 
-  // Per-account reset cutoff — all rows older than this are hidden.
-  // If reset_at is null, no filter is applied for that account.
+  // Per-account reset cutoff. All rows older than this are hidden.
   const resetAt: Record<string, string> = {};
   for (const a of accounts as any[]) {
     if (a.reset_at) resetAt[a.tag] = a.reset_at as string;
   }
-  const passesReset = (account_tag: string, ts: string | null | undefined) => {
+  const passesReset = (account_tag: string | null | undefined, ts: string | null | undefined) => {
+    if (!account_tag) return true;
     const r = resetAt[account_tag];
     if (!r) return true;
     if (!ts) return false;
@@ -184,4 +184,32 @@ export async function GET() {
       login: a.login,
       server: a.server,
       currency: a.currency,
-      last_seen: a.last_
+      last_seen: a.last_seen,
+      balance: Number(a.last_balance ?? 0),
+      equity: Number(a.last_equity ?? 0),
+      margin: Number(a.last_margin ?? 0),
+      free_margin: Number(a.last_free ?? 0),
+      floating: Number(a.last_profit ?? 0),
+      pnl_today,
+      pnl_week,
+      pnl_month,
+      by_ea_today: byEa,
+      open_positions: positions.filter((p: any) => p.account_tag === a.tag),
+      recent_deals: acctDeals.slice(0, 25),
+      equity_24h: equity24h,
+      equity_7d:  equity7d,
+      equity_30d: equity30d,
+      last_logs: lastLogByEa,
+      day_start_balance,
+      day_start_equity,
+    };
+  });
+
+  return NextResponse.json(
+    {
+      fetched_at: new Date().toISOString(),
+      accounts: perAccount,
+    },
+    { headers: NO_STORE_HEADERS }
+  );
+}
