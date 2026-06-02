@@ -89,7 +89,7 @@ export async function GET() {
       .select("account_tag, ea, message, ts")
       .gte("ts", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
       .order("ts", { ascending: false })
-      .limit(2000)
+      .limit(10000)
   ).data ?? []).filter((r: any) => passesReset(r.account_tag, r.ts));
 
   const deals = ((
@@ -169,7 +169,7 @@ export async function GET() {
     const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
     const equity30d = acctSnaps;
 
-    const MAX_LOGS_PER_EA = 15;
+    const MAX_LOGS_PER_EA = 500;  // ~1 day worth of heartbeats per EA
     const lastLogByEa: Record<string, { message: string; ts: string }[]> = {};
     for (const r of recentLogs) {
       if (r.account_tag !== a.tag) continue;

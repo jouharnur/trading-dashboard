@@ -251,16 +251,51 @@ function DayHighLow({ acct }: { acct: Account }) {
   const fmtTime = (t: number | null) =>
     t == null ? "" : tzShift(t).toISOString().substring(11, 16) + " " + TZ_LABEL;
 
+  // Visual gauge: where does current floating sit between today's low and high?
+  const range = high - low;
+  const pos = range > 0 ? (acct.floating - low) / range : 0.5;
+  const posPct = Math.max(0, Math.min(1, pos)) * 100;
   return (
-    <div className="card" style={{ flex: 1, minWidth: 200 }}>
+    <div className="card" style={{ flex: 1, minWidth: 220 }}>
       <h3>Today Floating High / Low</h3>
-      <div className="muted">High</div>
-      <div className={"big " + cls(high)}>{fmt$(high)}</div>
-      <div className="muted" style={{ fontSize: 11 }}>{fmtTime(hiTs)}</div>
-      <div className="muted" style={{ marginTop: 8 }}>Low</div>
-      <div className={"big " + cls(low)}>{fmt$(low)}</div>
-      <div className="muted" style={{ fontSize: 11 }}>{fmtTime(loTs)}</div>
-      <div className="muted" style={{ marginTop: 6 }}>swing {fmt$(spread)}</div>
+      {/* Range bar with current marker */}
+      <div style={{ position: "relative", height: 14, background: "#1e2330", borderRadius: 7, marginTop: 6, marginBottom: 16 }}>
+        {/* Zero-line baseline marker */}
+        {low < 0 && high > 0 && (
+          <div style={{
+            position: "absolute",
+            left: `${range > 0 ? ((0 - low) / range) * 100 : 50}%`,
+            top: -2, bottom: -2, width: 1, background: "#e9b94a"
+          }} />
+        )}
+        {/* Current floating marker */}
+        <div style={{
+          position: "absolute",
+          left: `calc(${posPct}% - 6px)`,
+          top: -3, width: 12, height: 20,
+          background: acct.floating > 0 ? "#7ec99e" : acct.floating < 0 ? "#e57373" : "#98a3b3",
+          borderRadius: 3,
+          boxShadow: "0 0 4px rgba(0,0,0,0.5)",
+        }} title={`now: ${fmt$(acct.floating)}`} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+        <div>
+          <div className="muted">Low</div>
+          <div className={cls(low)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(low)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>{fmtTime(loTs)}</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div className="muted">Now</div>
+          <div className={cls(acct.floating)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>{posPct.toFixed(0)}% of range</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div className="muted">High</div>
+          <div className={cls(high)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(high)}</div>
+          <div className="muted" style={{ fontSize: 10 }}>{fmtTime(hiTs)}</div>
+        </div>
+      </div>
+      <div className="muted" style={{ marginTop: 8, textAlign: "center", fontSize: 11 }}>swing {fmt$(spread)}</div>
     </div>
   );
 }
@@ -472,15 +507,16 @@ function LastLogsCard({ acct }: { acct: Account }) {
 
   return (
     <div className="card" style={{ flex: 2, minWidth: 360 }}>
-      <h3>Recent EA events (V52)</h3>
+      <h3>Recent EA events (last 24h)</h3>
       {entries.map(([ea, lines]) => (
-        <div key={ea} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4 }}>
-            <strong style={{ color: "#e8ecf1" }}>{ea}</strong> - last update {ageStr(lines[0]?.ts)}
+        <div key={ea} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+            <span><strong style={{ color: "#e8ecf1" }}>{ea}</strong> · {lines.length} entries · last {ageStr(lines[0]?.ts)}</span>
           </div>
           <div style={{
-            maxHeight: 220,
+            maxHeight: 380,
             overflowY: "auto",
+            overflowX: "auto",
             fontFamily: "ui-monospace, monospace",
             fontSize: 12,
             border: "1px solid #232938",
@@ -488,7 +524,7 @@ function LastLogsCard({ acct }: { acct: Account }) {
             padding: 6,
           }}>
             {lines.map((l, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0" }}>
+              <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0", whiteSpace: "nowrap" }}>
                 <span className="muted" style={{ minWidth: 90, fontSize: 11 }}>{ageStr(l.ts)}</span>
                 <span className={eventClass(l.message)}>{l.message}</span>
               </div>
@@ -628,36 +664,42 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
           {arrow} {Math.abs(dayPct).toFixed(2)}%
         </span>
       </div>
-      <div className="mobile-summary-row" style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-        <div>
-          <div className="muted" style={{ fontSize: 10 }}>Equity</div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
-          <div className="muted" style={{ fontSize: 10 }}>bal {fmt$(acct.balance)}</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "stretch" }}>
+        {/* LEFT: full-height intraday equity chart */}
+        <div style={{ flex: 1.4, height: 110, minWidth: 0 }}>
+          {sparkData.length >= 2 && acct.day_start_equity > 0 ? (
+            <ResponsiveContainer>
+              <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                <YAxis hide domain={["auto", "auto"]} />
+                <ReferenceLine y={acct.day_start_equity} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
+                <Line
+                  type="monotone"
+                  dataKey="equity"
+                  stroke={dayGain >= 0 ? "#6ab0ff" : "#e57373"}
+                  dot={false}
+                  strokeWidth={1.5}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="muted" style={{ fontSize: 10, textAlign: "center", lineHeight: "110px" }}>no data yet</div>
+          )}
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div className="muted" style={{ fontSize: 10 }}>Floating</div>
-          <div className={cls(acct.floating)} style={{ fontSize: 15, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
-          <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 10 }}>today {fmt$(acct.pnl_today)}</div>
+        {/* RIGHT: numbers stacked */}
+        <div style={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Equity</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
+            <div className="muted" style={{ fontSize: 9 }}>bal {fmt$(acct.balance)}</div>
+          </div>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Floating</div>
+            <div className={cls(acct.floating)} style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
+            <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 9 }}>today {fmt$(acct.pnl_today)}</div>
+          </div>
         </div>
       </div>
-      {sparkData.length >= 2 && acct.day_start_equity > 0 && (
-        <div style={{ height: 50, marginTop: 8 }}>
-          <ResponsiveContainer>
-            <LineChart data={sparkData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-              <YAxis hide domain={["auto", "auto"]} />
-              <ReferenceLine y={acct.day_start_equity} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
-              <Line
-                type="monotone"
-                dataKey="equity"
-                stroke={dayGain >= 0 ? "#6ab0ff" : "#e57373"}
-                dot={false}
-                strokeWidth={1.5}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
       <div className="muted" style={{ textAlign: "center", marginTop: 4, fontSize: 10 }}>
         tap for details
       </div>
