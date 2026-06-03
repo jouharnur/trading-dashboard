@@ -303,28 +303,41 @@ function V52ProximityCard({ acct }: { acct: Account }) {
           <div style={{ position: "absolute", left: `${posEntry}%`, width: `${posStop - posEntry}%`, top: 0, bottom: 0, background: "#2f5f3f" }} />
           <div style={{ position: "absolute", left: `${posStop}%`, right: 0, top: 0, bottom: 0, background: "#5c2424" }} />
         </div>
-        {[{ p: posQuiet,  lbl: (need * 0.5).toFixed(1),  color: "#98a3b3", up: true  },
-          { p: posWatch,  lbl: (need * 0.75).toFixed(1), color: "#e9b94a", up: false },
-          { p: posEntry,  lbl: need.toFixed(1) + " entry", color: "#7ec99e", up: true },
-          { p: posStop,   lbl: stop.toFixed(1) + " stop",  color: "#e57373", up: false }].map((t, i) => (
-          <div key={i} style={{
-            position: "absolute",
-            left: `calc(${t.p}% - 1px)`,
-            top: 0, bottom: 0, width: 2,
-            background: t.color,
-          }}>
-            <div style={{
-              position: "absolute",
-              [t.up ? "top" : "bottom"]: "-2px",
-              left: -22, width: 50,
-              textAlign: "center",
-              fontSize: 9,
-              color: t.color,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}>{t.lbl}</div>
-          </div>
-        ))}
+        {(() => {
+          const labels = [
+            { p: posQuiet, lbl: (need * 0.5).toFixed(1),  color: "#98a3b3", up: true  },
+            { p: posWatch, lbl: (need * 0.75).toFixed(1), color: "#e9b94a", up: false },
+            { p: posEntry, lbl: need.toFixed(1) + " entry", color: "#7ec99e", up: true },
+            { p: posStop,  lbl: stop.toFixed(1) + " stop",  color: "#e57373", up: false },
+          ];
+          return labels.map((t, i) => {
+            const isFirst = i === 0;
+            const isLast = i === labels.length - 1;
+            const labelStyle: React.CSSProperties = isFirst
+              ? { left: 2, width: 56, textAlign: "left" }
+              : isLast
+              ? { left: -56, width: 56, textAlign: "right" }
+              : { left: -28, width: 56, textAlign: "center" };
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                left: `calc(${t.p}% - 1px)`,
+                top: 0, bottom: 0, width: 2,
+                background: t.color,
+              }}>
+                <div style={{
+                  position: "absolute",
+                  [t.up ? "top" : "bottom"]: "-2px",
+                  ...labelStyle,
+                  fontSize: 9,
+                  color: t.color,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}>{t.lbl}</div>
+              </div>
+            );
+          });
+        })()}
         <div style={{
           position: "absolute",
           left: `calc(${posCur}% - 6px)`,
@@ -430,28 +443,42 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
           <div style={{ position: "absolute", left: `${posStart}%`, width: `${posTarget - posStart}%`, top: 0, bottom: 0, background: "#2a3142" }} />
           <div style={{ position: "absolute", left: `${posTarget}%`, right: 0, top: 0, bottom: 0, background: "#2f5f3f" }} />
         </div>
-        {[{ p: posBust,   lbl: fmt$(bustLimit),  color: "#e57373", up: true  },
-          { p: posDaily,  lbl: fmt$(dailyLimit), color: "#e9a05a", up: false },
-          { p: posStart,  lbl: fmt$(initial),    color: "#98a3b3", up: true  },
-          { p: posTarget, lbl: fmt$(target),     color: "#7ec99e", up: false }].map((t, i) => (
-          <div key={i} style={{
-            position: "absolute",
-            left: `calc(${t.p}% - 1px)`,
-            top: 0, bottom: 0, width: 2,
-            background: t.color,
-          }}>
-            <div style={{
-              position: "absolute",
-              [t.up ? "top" : "bottom"]: "-2px",
-              left: -30, width: 66,
-              textAlign: "center",
-              fontSize: 9,
-              color: t.color,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}>{t.lbl}</div>
-          </div>
-        ))}
+        {(() => {
+          const labels = [
+            { p: posBust,   lbl: fmt$(bustLimit),  color: "#e57373", up: true  },
+            { p: posDaily,  lbl: fmt$(dailyLimit), color: "#e9a05a", up: false },
+            { p: posStart,  lbl: fmt$(initial),    color: "#98a3b3", up: true  },
+            { p: posTarget, lbl: fmt$(target),     color: "#7ec99e", up: false },
+          ];
+          return labels.map((t, i) => {
+            // Edge-aware positioning so labels at 0% / 100% don't clip outside the card.
+            const isFirst = i === 0;
+            const isLast = i === labels.length - 1;
+            const labelStyle: React.CSSProperties = isFirst
+              ? { left: 2, width: 70, textAlign: "left" }
+              : isLast
+              ? { left: -70, width: 70, textAlign: "right" }
+              : { left: -35, width: 70, textAlign: "center" };
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                left: `calc(${t.p}% - 1px)`,
+                top: 0, bottom: 0, width: 2,
+                background: t.color,
+              }}>
+                <div style={{
+                  position: "absolute",
+                  [t.up ? "top" : "bottom"]: "-2px",
+                  ...labelStyle,
+                  fontSize: 9,
+                  color: t.color,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}>{t.lbl}</div>
+              </div>
+            );
+          });
+        })()}
         <div style={{
           position: "absolute",
           left: `calc(${posCur}% - 6px)`,
