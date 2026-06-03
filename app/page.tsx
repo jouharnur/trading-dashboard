@@ -585,7 +585,17 @@ function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title:
               tickFormatter={chartTickFormatter(mode)}
               minTickGap={mode === "30d" ? 60 : 40}
             />
-            <YAxis tick={{ fill: "#98a3b3", fontSize: 11 }} domain={["auto", "auto"]} />
+            <YAxis
+              tick={{ fill: "#98a3b3", fontSize: 11 }}
+              domain={
+                dayStart && dayStart > 0
+                  ? [
+                      (dataMin: number) => Math.min(dataMin, dayStart) - Math.abs(dayStart) * 0.0005,
+                      (dataMax: number) => Math.max(dataMax, dayStart) + Math.abs(dayStart) * 0.0005,
+                    ]
+                  : (["auto", "auto"] as any)
+              }
+            />
             <Tooltip
               contentStyle={{ background: "#141821", border: "1px solid #232938", fontSize: 12 }}
               labelFormatter={(v) => {
@@ -941,7 +951,15 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
           {sparkData.length >= 2 && acct.day_start_balance > 0 ? (
             <ResponsiveContainer>
               <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                <YAxis hide domain={["auto", "auto"]} />
+                {/* Domain must explicitly include day_start_balance, otherwise the
+                    ReferenceLine renders OUTSIDE the chart's auto-fit range. */}
+                <YAxis
+                  hide
+                  domain={[
+                    (dataMin: number) => Math.min(dataMin, acct.day_start_balance) - Math.abs(acct.day_start_balance) * 0.0005,
+                    (dataMax: number) => Math.max(dataMax, acct.day_start_balance) + Math.abs(acct.day_start_balance) * 0.0005,
+                  ]}
+                />
                 <ReferenceLine y={acct.day_start_balance} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
                 <Line
                   type="monotone"
