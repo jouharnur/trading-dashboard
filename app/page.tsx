@@ -320,6 +320,152 @@ function V52ProximityCard({ acct }: { acct: Account }) {
   );
 }
 
+// FTMOChallengeCard — Phase 1 progress meter for FTMO challenges.
+//
+// Shows current cumulative % from starting equity against the three thresholds:
+//   +10% = profit target (PASS the challenge)
+//     0% = breakeven (start point)
+//    -5% = daily loss limit (broker forces a daily halt — only counts intraday DD)
+//   -10% = max overall loss (BUST — failed challenge)
+//
+// Heuristics for "starting equity":
+//   1. Earliest snapshot in equity_30d (i.e. right after the last reset)
+//   2. Falls back to day_start_balance if no snapshots yet
+//   3. Falls back to acct.balance if neither (renders empty state)
+//
+// Renders only on accounts whose tag starts with "FTMO" (case-insensitive).
+function FTMOChallengeCard({ acct }: { acct: Account }) {
+  if (!/^ftmo/i.test(acct.tag)) return null;
+
+  // Determine the challenge starting equity.
+  let startEquity = 0;
+  if (acct.equity_30d && acct.equity_30d.length > 0) {
+    startEquity = Number(acct.equity_30d[0].equity) || 0;
+  }
+  if (!startEquity || startEquity <= 0) startEquity = acct.day_start_balance || acct.balance || 0;
+  if (!startEquity || startEquity <= 0) return null;
+
+  const cur = acct.equity;
+  const dollarGain = cur - startEquity;
+  const pctGain = (dollarGain / startEquity) * 100;
+
+  // Scale: -12% to +12% (with the actual thresholds at -10/-5/0/+10).
+  const SCALE_MIN = -12, SCALE_MAX = 12;
+  const toPct = (v: number) => ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
+
+  // Position of key thresholds on the bar.
+  const posBust   = toPct(-10);
+  const posDaily  = toPct(-5);
+  const posZero   = toPct(0);
+  const posTarget = toPct(10);
+  const posCur    = Math.max(0, Math.min(100, toPct(pctGain)));
+
+  // Status zone for the current position.
+  let status: string, statusColor: string;
+  if (pctGain >= 10) {
+    status = "TARGET HIT";
+    statusColor = "#7ec99e";
+  } else if (pctGain >= 5) {
+    status = "ON TRACK";
+    statusColor = "#7ec99e";
+  } else if (pctGain >= 0) {
+    status = "HEALTHY";
+    statusColor = "#e8ecf1";
+  } else if (pctGain >= -3) {
+    status = "WATCHING";
+    statusColor = "#e9b94a";
+  } else if (pctGain >= -5) {
+    status = "DAILY WARNING";
+    statusColor = "#e9a05a";
+  } else if (pctGain >= -10) {
+    status = "DANGER";
+    statusColor = "#e57373";
+  } else {
+    status = "BUST";
+    statusColor = "#c14040";
+  }
+
+  // Distance to target / bust for the footer.
+  const toTargetD = Math.max(0, (startEquity * 0.10) - dollarGain);
+  const toBustD   = Math.max(0, dollarGain + (startEquity * 0.10));  // headroom before -10%
+
+  // Format helper.
+  const sgn = pctGain >= 0 ? "+" : "";
+
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 320 }}>
+      <h3>FTMO Phase 1 progress</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+        <div>
+          <span style={{ fontSize: 22, fontWeight: 700, color: dollarGain >= 0 ? "#7ec99e" : "#e57373" }}>
+            {sgn}{fmt$(dollarGain)}
+          </span>
+          <span className="muted" style={{ fontSize: 13, marginLeft: 6 }}>
+            ({sgn}{pctGain.toFixed(2)}%)
+          </span>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: statusColor, textTransform: "uppercase" }}>
+          {status}
+        </div>
+      </div>
+
+      {/* Horizontal scale with colored zones */}
+      <div style={{ position: "relative", height: 22, marginTop: 14, marginBottom: 22 }}>
+        {/* Background zones: bust → red, daily warning → orange, neutral → grey, target → green */}
+        <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 6, background: "#1e2330", borderRadius: 3, overflow: "hidden" }}>
+          {/* Bust zone (-12 → -10) — deep red */}
+          <div style={{ position: "absolute", left: 0, width: `${posBust}%`, top: 0, bottom: 0, background: "#5c2424" }} />
+          {/* Danger zone (-10 → -5) — red */}
+          <div style={{ position: "absolute", left: `${posBust}%`, width: `${posDaily - posBust}%`, top: 0, bottom: 0, background: "#7c3a3a" }} />
+          {/* Watching zone (-5 → 0) — neutral grey */}
+          <div style={{ position: "absolute", left: `${posDaily}%`, width: `${posZero - posDaily}%`, top: 0, bottom: 0, background: "#2a3142" }} />
+          {/* Healthy zone (0 → +10) — neutral */}
+          <div style={{ position: "absolute", left: `${posZero}%`, width: `${posTarget - posZero}%`, top: 0, bottom: 0, background: "#2a3142" }} />
+          {/* Target zone (+10 → +12) — green */}
+          <div style={{ position: "absolute", left: `${posTarget}%`, right: 0, top: 0, bottom: 0, background: "#2f5f3f" }} />
+        </div>
+        {/* Threshold tick marks */}
+        {[{ p: posBust, lbl: "-10%", color: "#e57373", up: true },
+          { p: posDaily, lbl: "-5%", color: "#e9a05a", up: false },
+          { p: posZero, lbl: "0%", color: "#98a3b3", up: true },
+          { p: posTarget, lbl: "+10%", color: "#7ec99e", up: false }].map((t, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            left: `calc(${t.p}% - 1px)`,
+            top: 0, bottom: 0, width: 2,
+            background: t.color,
+          }}>
+            <div style={{
+              position: "absolute",
+              [t.up ? "top" : "bottom"]: "-2px",
+              left: -16, width: 36,
+              textAlign: "center",
+              fontSize: 9,
+              color: t.color,
+              fontWeight: 600,
+            }}>{t.lbl}</div>
+          </div>
+        ))}
+        {/* Current position marker */}
+        <div style={{
+          position: "absolute",
+          left: `calc(${posCur}% - 6px)`,
+          top: 2, width: 12, height: 18,
+          background: dollarGain >= 0 ? "#7ec99e" : "#e57373",
+          borderRadius: 2,
+          boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+        }} title={`current: ${sgn}${pctGain.toFixed(2)}%`} />
+      </div>
+
+      <div className="muted" style={{ fontSize: 11, display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+        <span>start: <span style={{ color: "#e8ecf1" }}>{fmt$(startEquity)}</span></span>
+        <span>to target: <span style={{ color: "#7ec99e" }}>{fmt$(toTargetD)}</span></span>
+        <span>headroom to bust: <span style={{ color: "#e57373" }}>{fmt$(toBustD)}</span></span>
+      </div>
+    </div>
+  );
+}
+
 // total_pnl_at_snapshot = equity(at snapshot) - day_start_equity.
 // This is more correct than floating-only because once positions close they
 // stop contributing to floating but their realized P&L stays in equity.
@@ -691,9 +837,10 @@ function AccountBlock({ acct }: { acct: Account }) {
         <DayHighLow acct={acct} />
       </div>
 
-      {/* V52 proximity gauge — only renders when account has V52 heartbeats. */}
+      {/* V52 proximity gauge + FTMO challenge progress — each renders only when relevant. */}
       <div className="row" style={{ marginTop: 12 }}>
         <V52ProximityCard acct={acct} />
+        <FTMOChallengeCard acct={acct} />
       </div>
 
       <div style={{ marginTop: 12 }}>
