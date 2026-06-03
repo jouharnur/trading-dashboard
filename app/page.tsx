@@ -235,75 +235,43 @@ function DayHighLow({ acct }: { acct: Account }) {
   const nowShifted = tzShift(Date.now());
   nowShifted.setUTCHours(0, 0, 0, 0);
   const sod = nowShifted.getTime() - TZ_OFFSET_H * 3600 * 1000;
-  const dayOpen = Number(acct.day_start_equity) || 0;
+  const dayOpen = Number(acct.day_start_balance) || 0;
 
-  // "Now" = today's P&L right now = equity - day_open
-  const nowPnl = dayOpen > 0 ? (acct.equity - dayOpen) : 0;
-  let high = nowPnl;
-  let low = nowPnl;
+  // Scan today's equity series for the high and low.
+  let high = Number.NEGATIVE_INFINITY;
+  let low = Number.POSITIVE_INFINITY;
   let hiTs: number | null = null;
   let loTs: number | null = null;
-
-  if (dayOpen > 0) {
-    for (const p of acct.equity_24h) {
-      const t = new Date(p.ts).getTime();
-      if (t < sod) continue;
-      const totalPnl = Number(p.equity) - dayOpen;
-      if (totalPnl > high) { high = totalPnl; hiTs = t; }
-      if (totalPnl < low)  { low  = totalPnl; loTs = t; }
-    }
+  for (const p of acct.equity_24h) {
+    const t = new Date(p.ts).getTime();
+    if (t < sod) continue;
+    const eq = Number(p.equity);
+    if (eq > high) { high = eq; hiTs = t; }
+    if (eq < low)  { low  = eq; loTs = t; }
   }
+  if (!isFinite(high)) { high = acct.equity; hiTs = null; }
+  if (!isFinite(low))  { low  = acct.equity; loTs = null; }
 
-  const spread = high - low;
   const fmtTime = (t: number | null) =>
     t == null ? "" : tzShift(t).toISOString().substring(11, 16) + " " + TZ_LABEL;
 
-  // Visual gauge: where does NOW sit between today's low and high?
-  const range = high - low;
-  const nowPos = range > 0 ? (nowPnl - low) / range : 0.5;
-  const nowPosPct = Math.max(0, Math.min(1, nowPos)) * 100;
   return (
     <div className="card" style={{ flex: 1, minWidth: 220 }}>
-      <h3>Today P&L Range (realized + floating)</h3>
-      {/* Range bar with current marker */}
-      <div style={{ position: "relative", height: 14, background: "#1e2330", borderRadius: 7, marginTop: 6, marginBottom: 16 }}>
-        {/* Zero-line baseline marker (where day-open sits in the range) */}
-        {low < 0 && high > 0 && (
-          <div style={{
-            position: "absolute",
-            left: `${range > 0 ? ((0 - low) / range) * 100 : 50}%`,
-            top: -2, bottom: -2, width: 1, background: "#e9b94a"
-          }} title="day open" />
-        )}
-        {/* Current total day-P&L marker */}
-        <div style={{
-          position: "absolute",
-          left: `calc(${nowPosPct}% - 6px)`,
-          top: -3, width: 12, height: 20,
-          background: nowPnl > 0 ? "#7ec99e" : nowPnl < 0 ? "#e57373" : "#98a3b3",
-          borderRadius: 3,
-          boxShadow: "0 0 4px rgba(0,0,0,0.5)",
-        }} title={`now: ${fmt$(nowPnl)}`} />
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+      <h3>Today equity high / low</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         <div>
-          <div className="muted">Low</div>
-          <div className={cls(low)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(low)}</div>
-          <div className="muted" style={{ fontSize: 10 }}>{fmtTime(loTs)}</div>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div className="muted">Now</div>
-          <div className={cls(nowPnl)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(nowPnl)}</div>
-          <div className="muted" style={{ fontSize: 10 }}>{nowPosPct.toFixed(0)}% of range</div>
+          <div className="muted">High</div>
+          <div className="pos" style={{ fontSize: 18, fontWeight: 700 }}>{fmt$(high)}</div>
+          <div className="muted" style={{ fontSize: 11 }}>{fmtTime(hiTs)}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div className="muted">High</div>
-          <div className={cls(high)} style={{ fontSize: 13, fontWeight: 600 }}>{fmt$(high)}</div>
-          <div className="muted" style={{ fontSize: 10 }}>{fmtTime(hiTs)}</div>
+          <div className="muted">Low</div>
+          <div className="neg" style={{ fontSize: 18, fontWeight: 700 }}>{fmt$(low)}</div>
+          <div className="muted" style={{ fontSize: 11 }}>{fmtTime(loTs)}</div>
         </div>
       </div>
-      <div className="muted" style={{ marginTop: 8, textAlign: "center", fontSize: 11 }}>
-        swing {fmt$(spread)} · day open {fmt$(dayOpen)}
+      <div className="muted" style={{ marginTop: 10, textAlign: "center", fontSize: 11 }}>
+        day open {fmt$(dayOpen)}
       </div>
     </div>
   );
@@ -638,16 +606,16 @@ function AccountBlock({ acct }: { acct: Account }) {
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_equity} />
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <LastLogsCard acct={acct} />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_balance} />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
         <PositionsTable rows={acct.open_positions} />
         <DealsTable rows={acct.recent_deals} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <LastLogsCard acct={acct} />
       </div>
     </div>
   );
