@@ -625,7 +625,6 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
   const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
   const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
   const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
-  const ea = primaryEA(acct);
 
   // Build today's equity sparkline: filter equity_24h to broker-day start, plot equity.
   const sodMs = (() => {
@@ -648,13 +647,26 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
         </span>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "stretch" }}>
-        {/* LEFT: full-height intraday equity chart */}
+        {/* LEFT: numbers stacked */}
+        <div style={{ flex: 1, textAlign: "left", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Equity</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
+            <div className="muted" style={{ fontSize: 9 }}>bal {fmt$(acct.balance)}</div>
+          </div>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Floating</div>
+            <div className={cls(acct.floating)} style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
+            <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 9 }}>today {fmt$(acct.pnl_today)}</div>
+          </div>
+        </div>
+        {/* RIGHT: full-height intraday equity chart */}
         <div style={{ flex: 1.4, height: 110, minWidth: 0 }}>
-          {sparkData.length >= 2 && acct.day_start_equity > 0 ? (
+          {sparkData.length >= 2 && acct.day_start_balance > 0 ? (
             <ResponsiveContainer>
               <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
                 <YAxis hide domain={["auto", "auto"]} />
-                <ReferenceLine y={acct.day_start_equity} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
+                <ReferenceLine y={acct.day_start_balance} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
                 <Line
                   type="monotone"
                   dataKey="equity"
@@ -668,19 +680,6 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
           ) : (
             <div className="muted" style={{ fontSize: 10, textAlign: "center", lineHeight: "110px" }}>no data yet</div>
           )}
-        </div>
-        {/* RIGHT: numbers stacked */}
-        <div style={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-          <div>
-            <div className="muted" style={{ fontSize: 10 }}>Equity</div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
-            <div className="muted" style={{ fontSize: 9 }}>bal {fmt$(acct.balance)}</div>
-          </div>
-          <div>
-            <div className="muted" style={{ fontSize: 10 }}>Floating</div>
-            <div className={cls(acct.floating)} style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
-            <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 9 }}>today {fmt$(acct.pnl_today)}</div>
-          </div>
         </div>
       </div>
       <div className="muted" style={{ textAlign: "center", marginTop: 4, fontSize: 10 }}>
