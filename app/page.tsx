@@ -403,10 +403,6 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
   else if (cur >= bustLimit)      { status = "DANGER";     statusColor = "#e57373"; }
   else                            { status = "BUST";       statusColor = "#c14040"; }
 
-  const toTargetD  = Math.max(0, target - cur);
-  const toBustD    = Math.max(0, cur - bustLimit);
-  const toDailyD   = Math.max(0, cur - dailyLimit);
-
   const sgn = dollarFromInit >= 0 ? "+" : "";
 
   return (
@@ -466,11 +462,6 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
         }} title={`equity = ${fmt$(cur)}`} />
       </div>
 
-      <div className="muted" style={{ fontSize: 11, display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-        <span>to target: <span style={{ color: "#7ec99e" }}>{fmt$(toTargetD)}</span></span>
-        <span>to daily: <span style={{ color: "#e9a05a" }}>{fmt$(toDailyD)}</span></span>
-        <span>headroom to bust: <span style={{ color: "#e57373" }}>{fmt$(toBustD)}</span></span>
-      </div>
     </div>
   );
 }
@@ -550,6 +541,10 @@ function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title:
     equity: Number(p.equity),
     balance: Number(p.balance),
   }));
+  // Equity line goes red when the latest equity is BELOW the day-open
+  // reference (same convention as the mobile summary card spark).
+  const lastEq = points.length > 0 ? points[points.length - 1].equity : 0;
+  const equityStroke = (dayStart && dayStart > 0 && lastEq < dayStart) ? "#e57373" : "#6ab0ff";
   return (
     <div className="card" style={{ flex: 1, minWidth: 360, width: "100%" }}>
       <h3>{title}</h3>
@@ -581,7 +576,7 @@ function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title:
                 label={{ value: `day open ${fmt$(dayStart)}`, position: "insideTopRight", fill: "#e9b94a", fontSize: 10 }}
               />
             )}
-            <Line type="monotone" dataKey="equity" stroke="#6ab0ff" dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="equity" stroke={equityStroke} dot={false} strokeWidth={2} />
             <Line type="monotone" dataKey="balance" stroke="#7ec99e" dot={false} strokeWidth={1} strokeDasharray="3 3" />
           </LineChart>
         </ResponsiveContainer>
