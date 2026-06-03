@@ -228,22 +228,15 @@ function ResetButton({ tag }: { tag: string }) {
 
 // Compute today's TOTAL P&L high and low (realized + unrealized combined).
 // V52ProximityCard — parse latest V52 heartbeat message in acct.last_logs and
-// render a gauge showing how close max|z| is to the entry threshold. Only
-// renders if a V52 entry exists.
+// render a multi-threshold horizontal gauge showing where max|z| sits on the
+// 0 → stop scale. Same visual style as the FTMO challenge card.
 //
 // Heartbeat format produced by the EA:
 //   open=0/8 equity=$110027.26 R=$1100.27 maxZ=1.36 need=3.5 market=LIVE
-//
-// Color zones based on maxZ as a fraction of need:
-//   < 0.50  green   (quiet)
-//   < 0.75  yellow  (watching)
-//   < 0.95  orange  (close)
-//   >= 0.95 red     (signal zone — entry imminent)
 function V52ProximityCard({ acct }: { acct: Account }) {
   const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
   if (v52Logs.length === 0) return null;
 
-  // Most recent log line (last_logs entries are in descending-by-ts order).
   let maxZ: number | null = null;
   let need: number | null = null;
   let market = "?";
@@ -264,144 +257,37 @@ function V52ProximityCard({ acct }: { acct: Account }) {
   }
   if (maxZ === null || need === null || need <= 0) return null;
 
-  const ratio = Math.min(maxZ / need, 1.2);  // allow slight overshoot in display
-  const pct = Math.min(100, ratio * 100);
-  const fillColor =
-    ratio < 0.50 ? "#7ec99e" :  // green — quiet
-    ratio < 0.75 ? "#e9b94a" :  // yellow — watching
-    ratio < 0.95 ? "#e9a05a" :  // orange — close
-                   "#e57373";   // red — signal zone
+  const stop = need + 1.0;
+  const SCALE_MIN = 0, SCALE_MAX = 5;
+  const toPct = (v: number) => ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
 
-  const stateLabel =
-    ratio < 0.50 ? "quiet"   :
-    ratio < 0.75 ? "watching" :
-    ratio < 0.95 ? "close"   :
-                   "SIGNAL";
+  const posQuiet  = toPct(need * 0.5);
+  const posWatch  = toPct(need * 0.75);
+  const posEntry  = toPct(need);
+  const posStop   = toPct(stop);
+  const posCur    = Math.max(0, Math.min(100, toPct(maxZ)));
+
+  let status: string, statusColor: string;
+  if (maxZ >= stop)             { status = "STOP ZONE"; statusColor = "#c14040"; }
+  else if (maxZ >= need)        { status = "SIGNAL";    statusColor = "#7ec99e"; }
+  else if (maxZ >= need * 0.85) { status = "IMMINENT";  statusColor = "#e9a05a"; }
+  else if (maxZ >= need * 0.65) { status = "CLOSE";     statusColor = "#e9b94a"; }
+  else                          { status = "QUIET";     statusColor = "#98a3b3"; }
+
+  const toEntry = Math.max(0, need - maxZ);
 
   const timeStr = lastTs
     ? tzShift(new Date(lastTs).getTime()).toISOString().substring(11, 16) + " " + TZ_LABEL
     : "";
 
   return (
-    <div className="card" style={{ flex: 1, minWidth: 260 }}>
+    <div className="card" style={{ flex: 1, minWidth: 320 }}>
       <h3>V52 signal proximity</h3>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
         <div>
           <span style={{ fontSize: 22, fontWeight: 700 }}>{maxZ.toFixed(2)}</span>
-          <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>/ {need.toFixed(1)} need</span>
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: fillColor, textTransform: "uppercase" }}>
-          {stateLabel}
-        </div>
-      </div>
-      {/* Gauge bar */}
-      <div style={{ position: "relative", height: 14, background: "#1e2330", borderRadius: 7, marginTop: 10, overflow: "hidden" }}>
-        <div style={{
-          position: "absolute", left: 0, top: 0, bottom: 0,
-          width: `${pct}%`,
-          background: fillColor,
-          transition: "width 0.4s ease",
-        }} />
-        {/* Threshold tick at need = 100% */}
-        <div style={{
-          position: "absolute",
-          left: "calc(100% - 2px)",  // gauge max == need (1.0 ratio)
-          top: -2, bottom: -2, width: 2,
-          background: "#e8ecf1",
-          boxShadow: "0 0 3px rgba(255,255,255,0.5)",
-        }} title={`entry threshold (${need.toFixed(1)})`} />
-      </div>
-      <div className="muted" style={{ marginTop: 10, fontSize: 11, display: "flex", justifyContent: "space-between" }}>
-        <span>positions: <span style={{ color: "#e8ecf1" }}>{openCnt}</span></span>
-        <span>market: <span style={{ color: "#e8ecf1" }}>{market}</span></span>
-        <span>{timeStr}</span>
-      </div>
-    </div>
-  );
-}
-
-// FTMOChallengeCard — Phase 1 progress meter for FTMO challenges.
-//
-// Shows current cumulative % from starting equity against the three thresholds:
-//   +10% = profit target (PASS the challenge)
-//     0% = breakeven (start point)
-//    -5% = daily loss limit (broker forces a daily halt — only counts intraday DD)
-//   -10% = max overall loss (BUST — failed challenge)
-//
-// Heuristics for "starting equity":
-//   1. Earliest snapshot in equity_30d (i.e. right after the last reset)
-//   2. Falls back to day_start_balance if no snapshots yet
-//   3. Falls back to acct.balance if neither (renders empty state)
-//
-// Renders only on accounts whose tag starts with "FTMO" (case-insensitive).
-function FTMOChallengeCard({ acct }: { acct: Account }) {
-  if (!/^ftmo/i.test(acct.tag)) return null;
-
-  // Determine the challenge starting equity.
-  let startEquity = 0;
-  if (acct.equity_30d && acct.equity_30d.length > 0) {
-    startEquity = Number(acct.equity_30d[0].equity) || 0;
-  }
-  if (!startEquity || startEquity <= 0) startEquity = acct.day_start_balance || acct.balance || 0;
-  if (!startEquity || startEquity <= 0) return null;
-
-  const cur = acct.equity;
-  const dollarGain = cur - startEquity;
-  const pctGain = (dollarGain / startEquity) * 100;
-
-  // Scale: -12% to +12% (with the actual thresholds at -10/-5/0/+10).
-  const SCALE_MIN = -12, SCALE_MAX = 12;
-  const toPct = (v: number) => ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
-
-  // Position of key thresholds on the bar.
-  const posBust   = toPct(-10);
-  const posDaily  = toPct(-5);
-  const posZero   = toPct(0);
-  const posTarget = toPct(10);
-  const posCur    = Math.max(0, Math.min(100, toPct(pctGain)));
-
-  // Status zone for the current position.
-  let status: string, statusColor: string;
-  if (pctGain >= 10) {
-    status = "TARGET HIT";
-    statusColor = "#7ec99e";
-  } else if (pctGain >= 5) {
-    status = "ON TRACK";
-    statusColor = "#7ec99e";
-  } else if (pctGain >= 0) {
-    status = "HEALTHY";
-    statusColor = "#e8ecf1";
-  } else if (pctGain >= -3) {
-    status = "WATCHING";
-    statusColor = "#e9b94a";
-  } else if (pctGain >= -5) {
-    status = "DAILY WARNING";
-    statusColor = "#e9a05a";
-  } else if (pctGain >= -10) {
-    status = "DANGER";
-    statusColor = "#e57373";
-  } else {
-    status = "BUST";
-    statusColor = "#c14040";
-  }
-
-  // Distance to target / bust for the footer.
-  const toTargetD = Math.max(0, (startEquity * 0.10) - dollarGain);
-  const toBustD   = Math.max(0, dollarGain + (startEquity * 0.10));  // headroom before -10%
-
-  // Format helper.
-  const sgn = pctGain >= 0 ? "+" : "";
-
-  return (
-    <div className="card" style={{ flex: 1, minWidth: 320 }}>
-      <h3>FTMO Phase 1 progress</h3>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
-        <div>
-          <span style={{ fontSize: 22, fontWeight: 700, color: dollarGain >= 0 ? "#7ec99e" : "#e57373" }}>
-            {sgn}{fmt$(dollarGain)}
-          </span>
           <span className="muted" style={{ fontSize: 13, marginLeft: 6 }}>
-            ({sgn}{pctGain.toFixed(2)}%)
+            / {need.toFixed(1)} entry · {stop.toFixed(1)} stop
           </span>
         </div>
         <div style={{ fontSize: 12, fontWeight: 600, color: statusColor, textTransform: "uppercase" }}>
@@ -409,26 +295,18 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
         </div>
       </div>
 
-      {/* Horizontal scale with colored zones */}
       <div style={{ position: "relative", height: 22, marginTop: 14, marginBottom: 22 }}>
-        {/* Background zones: bust → red, daily warning → orange, neutral → grey, target → green */}
         <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 6, background: "#1e2330", borderRadius: 3, overflow: "hidden" }}>
-          {/* Bust zone (-12 → -10) — deep red */}
-          <div style={{ position: "absolute", left: 0, width: `${posBust}%`, top: 0, bottom: 0, background: "#5c2424" }} />
-          {/* Danger zone (-10 → -5) — red */}
-          <div style={{ position: "absolute", left: `${posBust}%`, width: `${posDaily - posBust}%`, top: 0, bottom: 0, background: "#7c3a3a" }} />
-          {/* Watching zone (-5 → 0) — neutral grey */}
-          <div style={{ position: "absolute", left: `${posDaily}%`, width: `${posZero - posDaily}%`, top: 0, bottom: 0, background: "#2a3142" }} />
-          {/* Healthy zone (0 → +10) — neutral */}
-          <div style={{ position: "absolute", left: `${posZero}%`, width: `${posTarget - posZero}%`, top: 0, bottom: 0, background: "#2a3142" }} />
-          {/* Target zone (+10 → +12) — green */}
-          <div style={{ position: "absolute", left: `${posTarget}%`, right: 0, top: 0, bottom: 0, background: "#2f5f3f" }} />
+          <div style={{ position: "absolute", left: 0, width: `${posQuiet}%`, top: 0, bottom: 0, background: "#2a3142" }} />
+          <div style={{ position: "absolute", left: `${posQuiet}%`, width: `${posWatch - posQuiet}%`, top: 0, bottom: 0, background: "#3a3624" }} />
+          <div style={{ position: "absolute", left: `${posWatch}%`, width: `${posEntry - posWatch}%`, top: 0, bottom: 0, background: "#4a3422" }} />
+          <div style={{ position: "absolute", left: `${posEntry}%`, width: `${posStop - posEntry}%`, top: 0, bottom: 0, background: "#2f5f3f" }} />
+          <div style={{ position: "absolute", left: `${posStop}%`, right: 0, top: 0, bottom: 0, background: "#5c2424" }} />
         </div>
-        {/* Threshold tick marks */}
-        {[{ p: posBust, lbl: "-10%", color: "#e57373", up: true },
-          { p: posDaily, lbl: "-5%", color: "#e9a05a", up: false },
-          { p: posZero, lbl: "0%", color: "#98a3b3", up: true },
-          { p: posTarget, lbl: "+10%", color: "#7ec99e", up: false }].map((t, i) => (
+        {[{ p: posQuiet,  lbl: (need * 0.5).toFixed(1),  color: "#98a3b3", up: true  },
+          { p: posWatch,  lbl: (need * 0.75).toFixed(1), color: "#e9b94a", up: false },
+          { p: posEntry,  lbl: need.toFixed(1) + " entry", color: "#7ec99e", up: true },
+          { p: posStop,   lbl: stop.toFixed(1) + " stop",  color: "#e57373", up: false }].map((t, i) => (
           <div key={i} style={{
             position: "absolute",
             left: `calc(${t.p}% - 1px)`,
@@ -438,28 +316,156 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
             <div style={{
               position: "absolute",
               [t.up ? "top" : "bottom"]: "-2px",
-              left: -16, width: 36,
+              left: -22, width: 50,
               textAlign: "center",
               fontSize: 9,
               color: t.color,
               fontWeight: 600,
+              whiteSpace: "nowrap",
             }}>{t.lbl}</div>
           </div>
         ))}
-        {/* Current position marker */}
         <div style={{
           position: "absolute",
           left: `calc(${posCur}% - 6px)`,
           top: 2, width: 12, height: 18,
-          background: dollarGain >= 0 ? "#7ec99e" : "#e57373",
+          background: statusColor,
           borderRadius: 2,
           boxShadow: "0 0 4px rgba(0,0,0,0.6)",
-        }} title={`current: ${sgn}${pctGain.toFixed(2)}%`} />
+        }} title={`max|z| = ${maxZ.toFixed(2)}`} />
       </div>
 
       <div className="muted" style={{ fontSize: 11, display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-        <span>start: <span style={{ color: "#e8ecf1" }}>{fmt$(startEquity)}</span></span>
+        <span>positions: <span style={{ color: "#e8ecf1" }}>{openCnt}</span></span>
+        <span>market: <span style={{ color: "#e8ecf1" }}>{market}</span></span>
+        <span>to entry: <span style={{ color: "#7ec99e" }}>{toEntry.toFixed(2)}</span></span>
+        <span>{timeStr}</span>
+      </div>
+    </div>
+  );
+}
+
+// FTMOChallengeCard — Phase 1 progress meter for FTMO challenges.
+//
+// Anchors (everything in dollar terms, NOT percentages):
+//   initial balance = round(equity_30d[0]) to nearest standard challenge size
+//                     ($10k, $25k, $50k, $100k, $200k). For an account that
+//                     started at $100,000, this is always exactly $100,000.
+//   PROFIT TARGET   = initial × 1.10  (e.g. $100k → $110k)  ← RIGHT side of gauge
+//   DAILY HALT LINE = initial × 0.95  ($95k on a $100k)     ← left of center
+//   BUST LINE       = initial × 0.90  ($90k on a $100k)     ← LEFT side of gauge
+//
+// Renders only on FTMO accounts.
+function FTMOChallengeCard({ acct }: { acct: Account }) {
+  if (!/^ftmo/i.test(acct.tag)) return null;
+
+  let rawStart = 0;
+  if (acct.equity_30d && acct.equity_30d.length > 0) {
+    rawStart = Number(acct.equity_30d[0].equity) || 0;
+  }
+  if (!rawStart || rawStart <= 0) rawStart = acct.day_start_balance || acct.balance || 0;
+  if (!rawStart || rawStart <= 0) return null;
+  const STANDARD_SIZES = [5000, 10000, 25000, 50000, 100000, 200000, 400000];
+  let initial = STANDARD_SIZES[0];
+  let bestDiff = Math.abs(rawStart - initial);
+  for (const sz of STANDARD_SIZES) {
+    const d = Math.abs(rawStart - sz);
+    if (d < bestDiff) { bestDiff = d; initial = sz; }
+  }
+
+  const target = initial * 1.10;
+  const dailyLimit = initial * 0.95;
+  const bustLimit = initial * 0.90;
+
+  const cur = acct.equity;
+  const dollarFromInit = cur - initial;
+  const pctFromInit = (dollarFromInit / initial) * 100;
+
+  const SCALE_LOW  = bustLimit  - initial * 0.02;
+  const SCALE_HIGH = target     + initial * 0.02;
+  const toPct = (v: number) => ((v - SCALE_LOW) / (SCALE_HIGH - SCALE_LOW)) * 100;
+
+  const posBust   = toPct(bustLimit);
+  const posDaily  = toPct(dailyLimit);
+  const posStart  = toPct(initial);
+  const posTarget = toPct(target);
+  const posCur    = Math.max(0, Math.min(100, toPct(cur)));
+
+  let status: string, statusColor: string;
+  if (cur >= target)              { status = "TARGET HIT"; statusColor = "#7ec99e"; }
+  else if (cur >= initial * 1.05) { status = "ON TRACK";   statusColor = "#7ec99e"; }
+  else if (cur >= initial)        { status = "AHEAD";      statusColor = "#a8d8b8"; }
+  else if (cur >= initial * 0.99) { status = "HEALTHY";    statusColor = "#e8ecf1"; }
+  else if (cur >= dailyLimit)     { status = "WATCHING";   statusColor = "#e9b94a"; }
+  else if (cur >= bustLimit)      { status = "DANGER";     statusColor = "#e57373"; }
+  else                            { status = "BUST";       statusColor = "#c14040"; }
+
+  const toTargetD  = Math.max(0, target - cur);
+  const toBustD    = Math.max(0, cur - bustLimit);
+  const toDailyD   = Math.max(0, cur - dailyLimit);
+
+  const sgn = dollarFromInit >= 0 ? "+" : "";
+
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 360 }}>
+      <h3>FTMO Phase 1 progress</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+        <div>
+          <span style={{ fontSize: 22, fontWeight: 700, color: dollarFromInit >= 0 ? "#7ec99e" : "#e57373" }}>
+            {fmt$(cur)}
+          </span>
+          <span className="muted" style={{ fontSize: 13, marginLeft: 6 }}>
+            ({sgn}{fmt$(dollarFromInit)} · {sgn}{pctFromInit.toFixed(2)}%)
+          </span>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: statusColor, textTransform: "uppercase" }}>
+          {status}
+        </div>
+      </div>
+
+      <div style={{ position: "relative", height: 22, marginTop: 14, marginBottom: 22 }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 6, background: "#1e2330", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ position: "absolute", left: 0, width: `${posBust}%`, top: 0, bottom: 0, background: "#5c2424" }} />
+          <div style={{ position: "absolute", left: `${posBust}%`, width: `${posDaily - posBust}%`, top: 0, bottom: 0, background: "#7c3a3a" }} />
+          <div style={{ position: "absolute", left: `${posDaily}%`, width: `${posStart - posDaily}%`, top: 0, bottom: 0, background: "#3a3624" }} />
+          <div style={{ position: "absolute", left: `${posStart}%`, width: `${posTarget - posStart}%`, top: 0, bottom: 0, background: "#2a3142" }} />
+          <div style={{ position: "absolute", left: `${posTarget}%`, right: 0, top: 0, bottom: 0, background: "#2f5f3f" }} />
+        </div>
+        {[{ p: posBust,   lbl: fmt$(bustLimit),  color: "#e57373", up: true  },
+          { p: posDaily,  lbl: fmt$(dailyLimit), color: "#e9a05a", up: false },
+          { p: posStart,  lbl: fmt$(initial),    color: "#98a3b3", up: true  },
+          { p: posTarget, lbl: fmt$(target),     color: "#7ec99e", up: false }].map((t, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            left: `calc(${t.p}% - 1px)`,
+            top: 0, bottom: 0, width: 2,
+            background: t.color,
+          }}>
+            <div style={{
+              position: "absolute",
+              [t.up ? "top" : "bottom"]: "-2px",
+              left: -30, width: 66,
+              textAlign: "center",
+              fontSize: 9,
+              color: t.color,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}>{t.lbl}</div>
+          </div>
+        ))}
+        <div style={{
+          position: "absolute",
+          left: `calc(${posCur}% - 6px)`,
+          top: 2, width: 12, height: 18,
+          background: statusColor,
+          borderRadius: 2,
+          boxShadow: "0 0 4px rgba(0,0,0,0.6)",
+        }} title={`equity = ${fmt$(cur)}`} />
+      </div>
+
+      <div className="muted" style={{ fontSize: 11, display: "flex", justifyContent: "space-between", marginTop: 4 }}>
         <span>to target: <span style={{ color: "#7ec99e" }}>{fmt$(toTargetD)}</span></span>
+        <span>to daily: <span style={{ color: "#e9a05a" }}>{fmt$(toDailyD)}</span></span>
         <span>headroom to bust: <span style={{ color: "#e57373" }}>{fmt$(toBustD)}</span></span>
       </div>
     </div>
