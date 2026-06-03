@@ -227,6 +227,99 @@ function ResetButton({ tag }: { tag: string }) {
 }
 
 // Compute today's TOTAL P&L high and low (realized + unrealized combined).
+// V52ProximityCard — parse latest V52 heartbeat message in acct.last_logs and
+// render a gauge showing how close max|z| is to the entry threshold. Only
+// renders if a V52 entry exists.
+//
+// Heartbeat format produced by the EA:
+//   open=0/8 equity=$110027.26 R=$1100.27 maxZ=1.36 need=3.5 market=LIVE
+//
+// Color zones based on maxZ as a fraction of need:
+//   < 0.50  green   (quiet)
+//   < 0.75  yellow  (watching)
+//   < 0.95  orange  (close)
+//   >= 0.95 red     (signal zone — entry imminent)
+function V52ProximityCard({ acct }: { acct: Account }) {
+  const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
+  if (v52Logs.length === 0) return null;
+
+  // Most recent log line (last_logs entries are in descending-by-ts order).
+  let maxZ: number | null = null;
+  let need: number | null = null;
+  let market = "?";
+  let openCnt = "?";
+  let lastTs: string | null = null;
+  for (const e of v52Logs) {
+    const m = e.message || "";
+    const mz = m.match(/maxZ=([0-9]+(?:\.[0-9]+)?)/);
+    const nd = m.match(/need=([0-9]+(?:\.[0-9]+)?)/);
+    if (mz && nd) {
+      maxZ = parseFloat(mz[1]);
+      need = parseFloat(nd[1]);
+      const mk = m.match(/market=(\w+)/); if (mk) market = mk[1];
+      const op = m.match(/open=([0-9]+\/[0-9]+)/); if (op) openCnt = op[1];
+      lastTs = e.ts;
+      break;
+    }
+  }
+  if (maxZ === null || need === null || need <= 0) return null;
+
+  const ratio = Math.min(maxZ / need, 1.2);  // allow slight overshoot in display
+  const pct = Math.min(100, ratio * 100);
+  const fillColor =
+    ratio < 0.50 ? "#7ec99e" :  // green — quiet
+    ratio < 0.75 ? "#e9b94a" :  // yellow — watching
+    ratio < 0.95 ? "#e9a05a" :  // orange — close
+                   "#e57373";   // red — signal zone
+
+  const stateLabel =
+    ratio < 0.50 ? "quiet"   :
+    ratio < 0.75 ? "watching" :
+    ratio < 0.95 ? "close"   :
+                   "SIGNAL";
+
+  const timeStr = lastTs
+    ? tzShift(new Date(lastTs).getTime()).toISOString().substring(11, 16) + " " + TZ_LABEL
+    : "";
+
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 260 }}>
+      <h3>V52 signal proximity</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+        <div>
+          <span style={{ fontSize: 22, fontWeight: 700 }}>{maxZ.toFixed(2)}</span>
+          <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>/ {need.toFixed(1)} need</span>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: fillColor, textTransform: "uppercase" }}>
+          {stateLabel}
+        </div>
+      </div>
+      {/* Gauge bar */}
+      <div style={{ position: "relative", height: 14, background: "#1e2330", borderRadius: 7, marginTop: 10, overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: `${pct}%`,
+          background: fillColor,
+          transition: "width 0.4s ease",
+        }} />
+        {/* Threshold tick at need = 100% */}
+        <div style={{
+          position: "absolute",
+          left: "calc(100% - 2px)",  // gauge max == need (1.0 ratio)
+          top: -2, bottom: -2, width: 2,
+          background: "#e8ecf1",
+          boxShadow: "0 0 3px rgba(255,255,255,0.5)",
+        }} title={`entry threshold (${need.toFixed(1)})`} />
+      </div>
+      <div className="muted" style={{ marginTop: 10, fontSize: 11, display: "flex", justifyContent: "space-between" }}>
+        <span>positions: <span style={{ color: "#e8ecf1" }}>{openCnt}</span></span>
+        <span>market: <span style={{ color: "#e8ecf1" }}>{market}</span></span>
+        <span>{timeStr}</span>
+      </div>
+    </div>
+  );
+}
+
 // total_pnl_at_snapshot = equity(at snapshot) - day_start_equity.
 // This is more correct than floating-only because once positions close they
 // stop contributing to floating but their realized P&L stays in equity.
@@ -596,6 +689,11 @@ function AccountBlock({ acct }: { acct: Account }) {
           )}
         </div>
         <DayHighLow acct={acct} />
+      </div>
+
+      {/* V52 proximity gauge — only renders when account has V52 heartbeats. */}
+      <div className="row" style={{ marginTop: 12 }}>
+        <V52ProximityCard acct={acct} />
       </div>
 
       <div style={{ marginTop: 12 }}>
