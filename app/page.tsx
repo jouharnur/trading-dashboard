@@ -357,8 +357,9 @@ function V52ProximityCard({ acct }: { acct: Account }) {
 //
 // Renders only on FTMO accounts.
 function FTMOChallengeCard({ acct }: { acct: Account }) {
-  // Renders on FTMO (where the limits are broker-enforced) AND on Pepperstone
-  // (where they're shown as informational reference lines only).
+  // Renders only on FTMO — the broker-enforced challenge limits don't apply
+  // to Pepperstone, so showing a "10% target" gauge there is misleading.
+  if (!/^ftmo/i.test(acct.tag)) return null;
 
   let rawStart = 0;
   if (acct.equity_30d && acct.equity_30d.length > 0) {
@@ -410,7 +411,7 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
 
   return (
     <div className="card" style={{ flex: 1, minWidth: 360 }}>
-      <h3>{(/^ftmo/i.test(acct.tag) ? "FTMO Phase 1" : "10% target") + " progress"}</h3>
+      <h3>FTMO Phase 1 progress</h3>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
         <div>
           <span style={{ fontSize: 22, fontWeight: 700, color: dollarFromInit >= 0 ? "#7ec99e" : "#e57373" }}>
