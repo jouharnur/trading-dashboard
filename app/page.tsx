@@ -242,17 +242,38 @@ function V52ProximityCard({ acct }: { acct: Account }) {
   let market = "?";
   let openCnt = "?";
   let lastTs: string | null = null;
+  // Track today's broker-day peak by scanning ALL heartbeats since broker
+  // midnight UTC+3. "Current" maxZ is the latest snapshot; "peak" tells you
+  // how close anything came to the entry signal today — the question you'd
+  // actually ask while monitoring.
+  let peakZ = 0;
+  let peakTs: string | null = null;
+  const sodMs = (() => {
+    const n = tzShift(Date.now());
+    n.setUTCHours(0, 0, 0, 0);
+    return n.getTime() - TZ_OFFSET_H * 3600 * 1000;
+  })();
   for (const e of v52Logs) {
     const m = e.message || "";
     const mz = m.match(/maxZ=([0-9]+(?:\.[0-9]+)?)/);
     const nd = m.match(/need=([0-9]+(?:\.[0-9]+)?)/);
     if (mz && nd) {
-      maxZ = parseFloat(mz[1]);
-      need = parseFloat(nd[1]);
-      const mk = m.match(/market=(\w+)/); if (mk) market = mk[1];
-      const op = m.match(/open=([0-9]+\/[0-9]+)/); if (op) openCnt = op[1];
-      lastTs = e.ts;
-      break;
+      const z = parseFloat(mz[1]);
+      const n = parseFloat(nd[1]);
+      // First valid match = latest entry (logs come in descending-ts order).
+      if (maxZ === null) {
+        maxZ = z;
+        need = n;
+        const mk = m.match(/market=(\w+)/); if (mk) market = mk[1];
+        const op = m.match(/open=([0-9]+\/[0-9]+)/); if (op) openCnt = op[1];
+        lastTs = e.ts;
+      }
+      // Track today's peak across all broker-day heartbeats.
+      const tms = new Date(e.ts).getTime();
+      if (tms >= sodMs && z > peakZ) {
+        peakZ = z;
+        peakTs = e.ts;
+      }
     }
   }
   if (maxZ === null || need === null || need <= 0) return null;
@@ -338,6 +359,20 @@ function V52ProximityCard({ acct }: { acct: Account }) {
             );
           });
         })()}
+        {/* Today's peak — translucent yellow tick at the highest z reached today.
+            Only shown if it's actually higher than the current value. */}
+        {peakZ > maxZ && (() => {
+          const posPeak = Math.max(0, Math.min(100, toPct(peakZ)));
+          return (
+            <div style={{
+              position: "absolute",
+              left: `calc(${posPeak}% - 1px)`,
+              top: -2, bottom: -2, width: 2,
+              background: "#e9b94a",
+              opacity: 0.8,
+            }} title={`today peak ${peakZ.toFixed(2)}`} />
+          );
+        })()}
         <div style={{
           position: "absolute",
           left: `calc(${posCur}% - 6px)`,
@@ -351,6 +386,7 @@ function V52ProximityCard({ acct }: { acct: Account }) {
       <div className="muted" style={{ fontSize: 11, display: "flex", justifyContent: "space-between", marginTop: 4 }}>
         <span>positions: <span style={{ color: "#e8ecf1" }}>{openCnt}</span></span>
         <span>market: <span style={{ color: "#e8ecf1" }}>{market}</span></span>
+        <span>today peak: <span style={{ color: "#e9b94a", fontWeight: 600 }}>{peakZ.toFixed(2)}</span></span>
         <span>to entry: <span style={{ color: "#7ec99e" }}>{toEntry.toFixed(2)}</span></span>
         <span>{timeStr}</span>
       </div>
