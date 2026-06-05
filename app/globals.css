@@ -61,10 +61,18 @@ a { color: #6ab0ff; text-decoration: none; }
   .row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 12px;
   }
   .row > .card { min-width: 0; }
-  .row > .card-wide { grid-column: 1 / -1; }
+  /* .card-wide forces full-row width on mobile regardless of parent.
+     Works both inside a .row grid (via grid-column 1/-1) and as a plain
+     block element (via width:100%) — so e.g. the equity chart container,
+     which is NOT inside a .row, still spans full width. */
+  .card-wide {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 @media (max-width: 380px) {
   .row { grid-template-columns: 1fr; }

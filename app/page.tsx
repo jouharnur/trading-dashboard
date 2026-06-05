@@ -728,7 +728,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
 
 function DealsTable({ rows }: { rows: Deal[] }) {
   return (
-    <div className="card" style={{ flex: 2, minWidth: 480 }}>
+    <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
       <h3>Recent closed deals</h3>
       {rows.length === 0 ? (
         <div className="muted">- none in the last 30 days -</div>
