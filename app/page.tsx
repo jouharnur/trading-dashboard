@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  PieChart, Pie, Cell,
 } from "recharts";
 
 type EquityPt = { account_tag: string; ts: string; balance: number; equity: number; open_count: number };
@@ -875,6 +876,87 @@ function classifyRow(p: LogParse): { cols: LogCol[]; rowColor?: string } {
   return { cols: EVENT_COLS };
 }
 
+// Per-symbol P&L breakdown — twin pie charts (wins / losses).
+// Aggregates net P&L (profit + swap + commission) per symbol from recent_deals,
+// splits into positive/negative buckets, slice size = absolute contribution.
+function SymbolPnLCard({ rows }: { rows: Deal[] }) {
+  const bySymbol: Record<string, number> = {};
+  for (const d of rows || []) {
+    const sym = d.symbol || "?";
+    const pnl = Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0);
+    bySymbol[sym] = (bySymbol[sym] || 0) + pnl;
+  }
+  const entries = Object.entries(bySymbol);
+  const winners = entries.filter(([_, v]) => v > 0).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value);
+  const losers = entries.filter(([_, v]) => v < 0).map(([name, value]) => ({ name, value: Math.round(-value) })).sort((a, b) => b.value - a.value);
+  const totalWin = winners.reduce((s, w) => s + w.value, 0);
+  const totalLoss = losers.reduce((s, l) => s + l.value, 0);
+  const net = totalWin - totalLoss;
+  const GREEN = ["#7ec99e","#9bd6b3","#b2dcc2","#c8e4d0","#aac6b6","#92b8a4","#79aa92","#60998a","#48887c","#33786e","#1c685f","#0a5852"];
+  const RED   = ["#d68a85","#e0a09b","#e8b5b1","#eec7c4","#cf7973","#c46862","#b85852","#ad4843","#9d3a35","#8c2d28","#7a201c","#671513"];
+  if (winners.length === 0 && losers.length === 0) {
+    return (
+      <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
+        <h3>P&amp;L by symbol (last 30d)</h3>
+        <div className="muted">- no closed deals yet -</div>
+      </div>
+    );
+  }
+  const labelFn = (entry: any) => entry.percent > 0.04 ? entry.name : "";
+  return (
+    <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
+      <h3>P&amp;L by symbol (last 30d)</h3>
+      <div style={{ display: "flex", gap: 8, fontSize: 12, marginBottom: 8, color: "#98a3b3", flexWrap: "wrap" }}>
+        <span>Net <strong className={cls(net)}>{fmt$(net)}</strong></span>
+        <span>·</span>
+        <span>Wins <span className="pos">{fmt$(totalWin)}</span></span>
+        <span>·</span>
+        <span>Losses <span className="neg">{fmt$(-totalLoss)}</span></span>
+        <span>·</span>
+        <span>{winners.length} winning, {losers.length} losing</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: "#7ec99e", textAlign: "center", marginBottom: 4 }}>Profit contributors</div>
+          {winners.length === 0 ? (
+            <div className="muted" style={{ textAlign: "center", padding: 30, fontSize: 12 }}>- none -</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={winners} dataKey="value" nameKey="name" outerRadius={85} label={labelFn} labelLine={false}>
+                  {winners.map((_, i) => <Cell key={i} fill={GREEN[i % GREEN.length]} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#1a2030", border: "1px solid #232938", fontSize: 12 }}
+                  formatter={(v: any, _n: any, p: any) => [`${fmt$(Number(v))} (${(p.percent*100).toFixed(0)}%)`, p.payload.name]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "#d68a85", textAlign: "center", marginBottom: 4 }}>Loss contributors</div>
+          {losers.length === 0 ? (
+            <div className="muted" style={{ textAlign: "center", padding: 30, fontSize: 12 }}>- none -</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={losers} dataKey="value" nameKey="name" outerRadius={85} label={labelFn} labelLine={false}>
+                  {losers.map((_, i) => <Cell key={i} fill={RED[i % RED.length]} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#1a2030", border: "1px solid #232938", fontSize: 12 }}
+                  formatter={(v: any, _n: any, p: any) => [`${fmt$(-Number(v))} (${(p.percent*100).toFixed(0)}%)`, p.payload.name]}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LastLogsCard({ acct }: { acct: Account }) {
   const entries = Object.entries(acct.last_logs || {});
 
@@ -1078,6 +1160,10 @@ function AccountBlock({ acct }: { acct: Account }) {
       <div className="row" style={{ marginTop: 12 }}>
         <PositionsTable rows={acct.open_positions} />
         <DealsTable rows={acct.recent_deals} />
+      </div>
+
+      <div className="row" style={{ marginTop: 12 }}>
+        <SymbolPnLCard rows={acct.recent_deals} />
       </div>
 
       <div style={{ marginTop: 12 }}>
