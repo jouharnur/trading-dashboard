@@ -151,23 +151,105 @@ export async function GET() {
       });
 
     const acctSnaps = snapshots.filter((s: any) => s.account_tag === a.tag);
-    // Pick the snapshot that best represents "equity at broker-day start":
-    //   1. First snapshot at or after SOD_BROKER (preferred — actual day-start value)
-    //   2. Last snapshot BEFORE SOD_BROKER (yesterday's closing equity — still a valid baseline)
-    //   3. Current balance/equity (last resort — produces change=0)
-    const todaySnaps = acctSnaps.filter((s: any) => s.ts >= SOD_BROKER);
-    const yesterdaySnaps = acctSnaps.filter((s: any) => s.ts < SOD_BROKER);
-    let baselineSnap: any = null;
-    if (todaySnaps.length > 0) {
-      baselineSnap = todaySnaps[0];
-    } else if (yesterdaySnaps.length > 0) {
-      baselineSnap = yesterdaySnaps[yesterdaySnaps.length - 1];
+
+    // === Robust day_start computation ===
+    //
+    // Mathematically guaranteed: balance moves only when deals close, and
+    // pnl_today is exactly the sum of closes since broker midnight. So:
+    //
+    //     balance_at_midnight = current_balance - pnl_today
+    //
+    // This is more reliable than picking the FIRST snapshot of today, which
+    // can be hours late if Telemetry was offline at the actual broker midnight
+    // (e.g. VPS restart, EA migration). Previously a 10:00 restart would
+    // anchor day_start to 10:00 balance — wiping out the morning's P&L from
+    // the arrow comparison.
+    //
+    // For equity at midnight we PREFER a real snapshot if one exists within
+    // the first hour of the broker day (close to true midnight). Otherwise we
+    // fall back to balance-at-midnight (which is correct when no positions
+    // were carried across midnight — true for V52, approximate for V5+).
+    const last_balance = Number(a.last_balance ?? 0);
+    const sodMs = new Date(SOD_BROKER).getTime();
+    const earlyTodaySnap = acctSnaps.find((s: any) => {
+      const t = new Date(s.ts).getTime();
+      return t >= sodMs && t <= sodMs + 60 * 60 * 1000; // first hour of broker day
+    });
+
+    const day_start_balance =
+      last_balance > 0
+        ? last_balance - pnl_today
+        : Number(a.last_balance ?? 0);
+    const day_start_equity = earlyTodaySnap
+      ? Number(earlyTodaySnap.equity)
+      : day_start_balance;
+
+    // === Synthesize equity points from closed deals to fill Telemetry gaps ===
+    //
+    // If Telemetry was offline during part of the window (e.g. VPS restart),
+    // the snapshot series is sparse and the chart looks flat. We have the
+    // deals table — every closed deal is a known balance step. We can
+    // reconstruct synthetic equity points at each deal.closed_at by walking
+    // backwards from current balance and subtracting subsequent deal P&Ls.
+    //
+    // Assumption: equity ≈ balance at the moment a deal closes (the just-
+    // closed position no longer contributes to floating). This is exactly
+    // correct when no other positions were open at that moment, and a good
+    // approximation otherwise.
+    const dealsAsc = acctDeals
+      .slice()
+      .sort((d1: any, d2: any) =>
+        new Date(d1.closed_at).getTime() - new Date(d2.closed_at).getTime());
+    const totalPnlInWindow = dealsAsc
+      .filter((d: any) => d.closed_at >= since24h)
+      .reduce((s: number, d: any) =>
+        s + Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0), 0);
+    // Balance 24h ago = current_balance - all profits in window
+    let runningBal = last_balance - totalPnlInWindow;
+    const syntheticPoints: any[] = [];
+    // Seed with a synthetic "start of window" point so the line begins at the
+    // correct starting balance even when real snapshots are sparse.
+    syntheticPoints.push({
+      account_tag: a.tag,
+      ts: since24h,
+      balance: runningBal,
+      equity: runningBal,
+      open_count: 0,
+    });
+    for (const d of dealsAsc) {
+      if (d.closed_at < since24h) continue;
+      runningBal += Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0);
+      // Emit TWO points per deal — one just before (at the pre-close balance)
+      // and one at the close (at the post-close balance). This creates the
+      // step shape in the chart instead of a slanted line between deals.
+      const closedAtMs = new Date(d.closed_at).getTime();
+      const justBeforeIso = new Date(closedAtMs - 1000).toISOString();
+      syntheticPoints.push({
+        account_tag: a.tag,
+        ts: justBeforeIso,
+        balance: runningBal - (Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0)),
+        equity: runningBal - (Number(d.profit ?? 0) + Number(d.swap ?? 0) + Number(d.commission ?? 0)),
+        open_count: 0,
+      });
+      syntheticPoints.push({
+        account_tag: a.tag,
+        ts: d.closed_at,
+        balance: runningBal,
+        equity: runningBal,
+        open_count: 0,
+      });
     }
-    const day_start_balance = baselineSnap ? Number(baselineSnap.balance) : Number(a.last_balance ?? 0);
-    const day_start_equity  = baselineSnap ? Number(baselineSnap.equity)  : Number(a.last_equity  ?? 0);
-    const equity24h = acctSnaps.filter((s: any) => s.ts >= since24h);
-    const equity7d  = acctSnaps.filter((s: any) => s.ts >= since7d);
-    const equity30d = acctSnaps;
+    // Merge real snapshots + synthetic deal-derived points, dedupe by ts,
+    // prefer real snapshot when both exist for the same minute.
+    const merged = new Map<string, any>();
+    for (const p of syntheticPoints) merged.set(p.ts, p);
+    for (const s of acctSnaps) merged.set(s.ts, s); // overwrites synthetic at same ts
+    const equityAll = Array.from(merged.values())
+      .sort((x: any, y: any) => new Date(x.ts).getTime() - new Date(y.ts).getTime());
+
+    const equity24h = equityAll.filter((s: any) => s.ts >= since24h);
+    const equity7d  = equityAll.filter((s: any) => s.ts >= since7d);
+    const equity30d = equityAll;
 
     const MAX_LOGS_PER_EA = 500;  // ~1 day worth of heartbeats per EA
     const lastLogByEa: Record<string, { message: string; ts: string }[]> = {};

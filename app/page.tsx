@@ -459,11 +459,14 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
       <h3>FTMO Phase 1 progress</h3>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
         <div>
-          <span style={{ fontSize: 22, fontWeight: 700, color: dollarFromInit >= 0 ? "#7ec99e" : "#e57373" }}>
-            {fmt$(cur)}
+          {/* Equity itself is already shown in the main Equity card; here we
+              only need the change-vs-initial figure that's specific to the
+              challenge metric. */}
+          <span style={{ fontSize: 18, fontWeight: 700, color: dollarFromInit >= 0 ? "#7ec99e" : "#e57373" }}>
+            {sgn}{fmt$(dollarFromInit)}
           </span>
           <span className="muted" style={{ fontSize: 13, marginLeft: 6 }}>
-            ({sgn}{fmt$(dollarFromInit)} · {sgn}{pctFromInit.toFixed(2)}%)
+            ({sgn}{pctFromInit.toFixed(2)}%)
           </span>
         </div>
         <div style={{ fontSize: 12, fontWeight: 600, color: statusColor, textTransform: "uppercase" }}>
@@ -537,7 +540,10 @@ function DayHighLow({ acct }: { acct: Account }) {
   const nowShifted = tzShift(Date.now());
   nowShifted.setUTCHours(0, 0, 0, 0);
   const sod = nowShifted.getTime() - TZ_OFFSET_H * 3600 * 1000;
-  const dayOpen = Number(acct.day_start_balance) || 0;
+  // Day open = broker-day-start EQUITY (balance + floating at midnight UTC+3).
+  // Using equity, not balance, so the comparison stays consistent with the
+  // equity high/low we render below.
+  const dayOpen = Number(acct.day_start_equity) || Number(acct.day_start_balance) || 0;
 
   // Scan today's equity series for the high and low.
   let high = Number.NEGATIVE_INFINITY;
@@ -582,10 +588,10 @@ function DayHighLow({ acct }: { acct: Account }) {
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-function chartTickFormatter(mode: "24h" | "7d" | "30d") {
+function chartTickFormatter(mode: "24h" | "today" | "7d" | "30d") {
   return (v: number) => {
     const d = tzShift(v);
-    if (mode === "24h") {
+    if (mode === "24h" || mode === "today") {
       const hh = String(d.getUTCHours()).padStart(2, "0");
       const mm = String(d.getUTCMinutes()).padStart(2, "0");
       return `${hh}:${mm}`;
@@ -598,7 +604,7 @@ function chartTickFormatter(mode: "24h" | "7d" | "30d") {
   };
 }
 
-function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title: string; mode: "24h" | "7d" | "30d"; dayStart?: number }) {
+function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title: string; mode: "24h" | "today" | "7d" | "30d"; dayStart?: number }) {
   const points = data.map((p) => ({
     t: new Date(p.ts).getTime(),
     equity: Number(p.equity),
@@ -623,6 +629,8 @@ function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title:
             />
             <YAxis
               tick={{ fill: "#98a3b3", fontSize: 11 }}
+              width={70}
+              tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
               domain={
                 dayStart && dayStart > 0
                   ? [
@@ -836,8 +844,25 @@ function LastLogsCard({ acct }: { acct: Account }) {
 }
 
 function AccountBlock({ acct }: { acct: Account }) {
-  const [chart, setChart] = useState<"24h" | "7d" | "30d">("24h");
-  const chartData = chart === "24h" ? acct.equity_24h : chart === "7d" ? acct.equity_7d : acct.equity_30d;
+  const [chart, setChart] = useState<"24h" | "today" | "7d" | "30d">("24h");
+  // The yellow ReferenceLine is pinned to broker-day-start equity. The line
+  // is invariant to intraday trade closes (closes shift balance and floating
+  // by equal-and-opposite amounts; equity is unaffected by the close itself).
+  // "today" tab additionally trims the x-axis to the broker day. The default
+  // "24h" tab shows a rolling 24-hour window for context.
+  const sodMsForChart = (() => {
+    const n = tzShift(Date.now());
+    n.setUTCHours(0, 0, 0, 0);
+    return n.getTime() - TZ_OFFSET_H * 3600 * 1000;
+  })();
+  const chartData =
+    chart === "today"
+      ? (acct.equity_24h || []).filter((p) => new Date(p.ts).getTime() >= sodMsForChart)
+      : chart === "24h"
+        ? acct.equity_24h
+        : chart === "7d"
+          ? acct.equity_7d
+          : acct.equity_30d;
 
   const eaRows = Object.entries(acct.by_ea_today);
 
@@ -857,12 +882,19 @@ function AccountBlock({ acct }: { acct: Account }) {
           <div className="big">{fmt$(acct.equity)}</div>
           <div className="muted">bal {fmt$(acct.balance)}</div>
           <div className="muted" style={{ marginTop: 6 }}>
-            day open: <span style={{ fontWeight: 600, color: "#e8ecf1" }}>{fmt$(acct.day_start_balance)}</span>
+            day open: <span style={{ fontWeight: 600, color: "#e8ecf1" }}>{fmt$(acct.day_start_equity)}</span>
           </div>
           {(() => {
-            // change = realized_today + floating_now
-            const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
-            const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
+            // change = current equity vs equity at broker-day-start.
+            // Using day_start_equity (not day_start_balance) so the comparison
+            // is invariant to trades closing during the day: a trade close
+            // simultaneously increases balance and decreases floating by the
+            // same amount, so equity (= balance + floating) is unaffected by
+            // the close itself — only by real PnL movement. The arrow direction
+            // therefore stays pinned to the actual day's PnL.
+            const baseline = acct.day_start_equity > 0 ? acct.day_start_equity : acct.day_start_balance;
+            const dayGain = acct.equity - baseline;
+            const dayPct = baseline > 0 ? (dayGain / baseline) * 100 : 0;
             const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
             return (
               <div style={{ marginTop: 4, fontSize: 14, fontWeight: 600 }}
@@ -876,7 +908,10 @@ function AccountBlock({ acct }: { acct: Account }) {
           <h3>Floating</h3>
           <div className={"big " + cls(acct.floating)}>{fmt$(acct.floating)}</div>
           <div className={"muted " + cls(acct.floating)}>
-            {acct.day_start_balance > 0 ? fmtPct((acct.floating / acct.day_start_balance) * 100) : "-"} of day start
+            {(() => {
+              const base = acct.day_start_equity > 0 ? acct.day_start_equity : acct.day_start_balance;
+              return base > 0 ? fmtPct((acct.floating / base) * 100) : "-";
+            })()} of day start
           </div>
           <div className="muted">{acct.open_positions.length} open</div>
         </div>
@@ -922,13 +957,13 @@ function AccountBlock({ acct }: { acct: Account }) {
 
       <div style={{ marginTop: 12 }}>
         <div className="tabs">
-          {(["24h", "7d", "30d"] as const).map((k) => (
+          {(["24h", "today", "7d", "30d"] as const).map((k) => (
             <div key={k} className={"tab " + (chart === k ? "active" : "")} onClick={() => setChart(k)}>
               {k}
             </div>
           ))}
         </div>
-        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_balance} />
+        <EquityChart data={chartData} mode={chart} title="Equity (blue) vs Balance (green) - UTC+3" dayStart={acct.day_start_equity > 0 ? acct.day_start_equity : acct.day_start_balance} />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
@@ -944,8 +979,13 @@ function AccountBlock({ acct }: { acct: Account }) {
 }
 
 function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => void }) {
-  const dayGain = (acct.balance - acct.day_start_balance) + acct.floating;
-  const dayPct = acct.day_start_balance > 0 ? (dayGain / acct.day_start_balance) * 100 : 0;
+  // Pin both the arrow and the chart reference line to broker-day-start equity.
+  // This is invariant to intraday trade closes — a close shifts balance and
+  // floating in opposite directions by the same amount, so equity (the
+  // comparison value) is unaffected by the close itself.
+  const baseline = acct.day_start_equity > 0 ? acct.day_start_equity : acct.day_start_balance;
+  const dayGain = acct.equity - baseline;
+  const dayPct = baseline > 0 ? (dayGain / baseline) * 100 : 0;
   const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
 
   // Build today's equity sparkline: filter equity_24h to broker-day start, plot equity.
@@ -984,19 +1024,19 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
         </div>
         {/* RIGHT: full-height intraday equity chart */}
         <div style={{ flex: 1.4, height: 110, minWidth: 0 }}>
-          {sparkData.length >= 2 && acct.day_start_balance > 0 ? (
+          {sparkData.length >= 2 && baseline > 0 ? (
             <ResponsiveContainer>
               <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                {/* Domain must explicitly include day_start_balance, otherwise the
-                    ReferenceLine renders OUTSIDE the chart's auto-fit range. */}
+                {/* Domain must explicitly include the day-open baseline, otherwise
+                    the ReferenceLine renders OUTSIDE the chart's auto-fit range. */}
                 <YAxis
                   hide
                   domain={[
-                    (dataMin: number) => Math.min(dataMin, acct.day_start_balance) - Math.abs(acct.day_start_balance) * 0.0005,
-                    (dataMax: number) => Math.max(dataMax, acct.day_start_balance) + Math.abs(acct.day_start_balance) * 0.0005,
+                    (dataMin: number) => Math.min(dataMin, baseline) - Math.abs(baseline) * 0.0005,
+                    (dataMax: number) => Math.max(dataMax, baseline) + Math.abs(baseline) * 0.0005,
                   ]}
                 />
-                <ReferenceLine y={acct.day_start_balance} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
+                <ReferenceLine y={baseline} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
                 <Line
                   type="monotone"
                   dataKey="equity"
@@ -1076,34 +1116,3 @@ export default function Page() {
 
   return (
     <div className="container wide">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
-        <div className="muted">
-          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
-        </div>
-      </div>
-      {data?.accounts?.length === 0 && (
-        <div className="card">
-          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
-        </div>
-      )}
-
-
-      {isMobile ? (
-        <div className="mobile-summary-grid">
-          {data?.accounts?.map((a) => (
-            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
-          ))}
-        </div>
-      ) : (
-        <div className="accounts-grid">
-          {data?.accounts?.map((a) => (
-            <div key={a.tag} className="account-col">
-              <AccountBlock acct={a} />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
