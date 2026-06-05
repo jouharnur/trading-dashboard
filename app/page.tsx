@@ -302,7 +302,7 @@ function V52ProximityCard({ acct }: { acct: Account }) {
     : "";
 
   return (
-    <div className="card" style={{ flex: 1, minWidth: 320 }}>
+    <div className="card card-wide" style={{ flex: 1, minWidth: 320 }}>
       <h3>V52 signal proximity</h3>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
         <div>
@@ -455,7 +455,7 @@ function FTMOChallengeCard({ acct }: { acct: Account }) {
   const sgn = dollarFromInit >= 0 ? "+" : "";
 
   return (
-    <div className="card" style={{ flex: 1, minWidth: 360 }}>
+    <div className="card card-wide" style={{ flex: 1, minWidth: 360 }}>
       <h3>FTMO Phase 1 progress</h3>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
         <div>
@@ -615,7 +615,7 @@ function EquityChart({ data, title, mode, dayStart }: { data: EquityPt[]; title:
   const lastEq = points.length > 0 ? points[points.length - 1].equity : 0;
   const equityStroke = (dayStart && dayStart > 0 && lastEq < dayStart) ? "#e57373" : "#6ab0ff";
   return (
-    <div className="card" style={{ flex: 1, minWidth: 360, width: "100%" }}>
+    <div className="card card-wide" style={{ flex: 1, minWidth: 360, width: "100%" }}>
       <h3>{title}</h3>
       <div style={{ width: "100%", height: 260 }}>
         <ResponsiveContainer>
@@ -688,7 +688,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
   });
 
   return (
-    <div className="card" style={{ flex: 2, minWidth: 480 }}>
+    <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
       <h3>Open positions ({sorted.length})</h3>
       {sorted.length === 0 ? (
         <div className="muted">- no open positions -</div>
@@ -856,7 +856,7 @@ function LastLogsCard({ acct }: { acct: Account }) {
   const entries = Object.entries(acct.last_logs || {});
 
   return (
-    <div className="card" style={{ flex: 2, minWidth: 360 }}>
+    <div className="card card-wide" style={{ flex: 2, minWidth: 360 }}>
       <h3>Recent EA events (last 24h)</h3>
       {entries.length === 0 && (
         <div className="muted" style={{ fontSize: 12, padding: "12px 4px" }}>
