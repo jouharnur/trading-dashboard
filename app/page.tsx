@@ -791,17 +791,69 @@ function ageStr(iso: string | null | undefined) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// Parse a log message into key=value pairs. Handles heartbeats
+// ("bal=X equity=Y free=Z open=N ... | BAR=... eval=N entry=N ...")
+// and events ("OPEN EA_GA L z=3.85 R=1100 a=1.89 b=1.63").
+type LogParse = { tag: string; pairs: Record<string, string>; raw: string };
+function parseLogPairs(msg: string): LogParse {
+  let tag = "";
+  const firstWordMatch = msg.match(/^([A-Z][A-Z0-9_+]{1,})\b/);
+  if (firstWordMatch) tag = firstWordMatch[1];
+  const pairs: Record<string, string> = {};
+  const re = /([A-Za-z_][A-Za-z0-9_]*)=([^\s|]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(msg)) !== null) {
+    pairs[m[1]] = m[2];
+  }
+  return { tag, pairs, raw: msg };
+}
+
+type LogCol = { key: string; label: string; width: number; align?: "left" | "right" };
+
+const V5_HB_COLS: LogCol[] = [
+  { key: "equity",     label: "equity", width: 90,  align: "right" },
+  { key: "bal",        label: "bal",    width: 90,  align: "right" },
+  { key: "free",       label: "free",   width: 90,  align: "right" },
+  { key: "open",       label: "open",   width: 40,  align: "right" },
+  { key: "BAR",        label: "bar",    width: 110, align: "left" },
+  { key: "eval",       label: "eval",   width: 36,  align: "right" },
+  { key: "entry",      label: "ent",    width: 36,  align: "right" },
+  { key: "quiet",      label: "quiet",  width: 36,  align: "right" },
+  { key: "skip_vol",   label: "vol",    width: 36,  align: "right" },
+  { key: "skip_lossz", label: "lossz",  width: 36,  align: "right" },
+  { key: "skip_mkt",   label: "mkt",    width: 36,  align: "right" },
+];
+const V52_HB_COLS: LogCol[] = [
+  { key: "open",   label: "open",   width: 50,  align: "right" },
+  { key: "equity", label: "equity", width: 95,  align: "right" },
+  { key: "R",      label: "R",      width: 75,  align: "right" },
+  { key: "maxZ",   label: "maxZ",   width: 50,  align: "right" },
+  { key: "need",   label: "need",   width: 40,  align: "right" },
+  { key: "market", label: "market", width: 60,  align: "left" },
+];
+const EVENT_COLS: LogCol[] = [
+  { key: "__tag",  label: "event",  width: 130, align: "left" },
+  { key: "__rest", label: "detail", width: 380, align: "left" },
+];
+
+function classifyRow(p: LogParse): { cols: LogCol[]; rowColor?: string } {
+  const u = p.raw.toUpperCase();
+  if (u.includes("FAILED") || u.includes("ABS_KILL") || u.includes("DAILY_HALT") || u.startsWith("DASH_FAIL")) {
+    return { cols: EVENT_COLS, rowColor: "#e57373" };
+  }
+  if (p.raw.startsWith("OPEN ") || u.includes("PROFIT_LOCK")) {
+    return { cols: EVENT_COLS, rowColor: "#7ec99e" };
+  }
+  if (p.raw.startsWith("CLOSE ") || p.raw.startsWith("CORR_SKIP")) {
+    return { cols: EVENT_COLS, rowColor: "#e9b94a" };
+  }
+  if ("equity" in p.pairs && "R" in p.pairs) return { cols: V52_HB_COLS };
+  if ("equity" in p.pairs && "bal" in p.pairs) return { cols: V5_HB_COLS };
+  return { cols: EVENT_COLS };
+}
+
 function LastLogsCard({ acct }: { acct: Account }) {
   const entries = Object.entries(acct.last_logs || {});
-
-  // Highlight "interesting" events visually
-  const eventClass = (m: string) => {
-    const u = m.toUpperCase();
-    if (u.includes("FAILED") || u.includes("KILL") || u.includes("HALT")) return "neg";
-    if (u.startsWith("OPEN ") || u.includes("PROFIT_LOCK")) return "pos";
-    if (u.startsWith("CLOSE ")) return "warn";
-    return "muted";
-  };
 
   return (
     <div className="card" style={{ flex: 2, minWidth: 360 }}>
@@ -815,30 +867,63 @@ function LastLogsCard({ acct }: { acct: Account }) {
           <code>Inp_AccountTag</code> matches this account&apos;s tag exactly.
         </div>
       )}
-      {entries.map(([ea, lines]) => (
-        <div key={ea} style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
-            <span><strong style={{ color: "#e8ecf1" }}>{ea}</strong> · {lines.length} entries · last {ageStr(lines[0]?.ts)}</span>
-          </div>
-          <div style={{
-            maxHeight: 380,
-            overflowY: "auto",
-            overflowX: "auto",
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 12,
-            border: "1px solid #232938",
-            borderRadius: 4,
-            padding: 6,
-          }}>
-            {lines.map((l, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, padding: "2px 0", whiteSpace: "nowrap" }}>
-                <span className="muted" style={{ minWidth: 90, fontSize: 11 }}>{ageStr(l.ts)}</span>
-                <span className={eventClass(l.message)}>{l.message}</span>
+      {entries.map(([ea, lines]) => {
+        const parsed = lines.map((l) => parseLogPairs(l.message));
+        // Header columns come from the first heartbeat row so they reflect the
+        // dominant format. Event rows in the body still render with their own
+        // wider event/detail columns.
+        const firstHb = parsed.find((p) => "equity" in p.pairs);
+        const headerCols = firstHb ? classifyRow(firstHb).cols : EVENT_COLS;
+        return (
+          <div key={ea} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4 }}>
+              <strong style={{ color: "#e8ecf1" }}>{ea}</strong> · {lines.length} entries · last {ageStr(lines[0]?.ts)}
+            </div>
+            <div style={{
+              maxHeight: 380,
+              overflowY: "auto",
+              overflowX: "auto",
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 11,
+              border: "1px solid #232938",
+              borderRadius: 4,
+              padding: 6,
+            }}>
+              <div style={{ display: "flex", gap: 6, padding: "2px 0 4px 0", borderBottom: "1px solid #1e2330", color: "#6e7787", position: "sticky", top: -6, background: "#141821" }}>
+                <span style={{ minWidth: 70, fontSize: 10 }}>time</span>
+                {headerCols.map((c) => (
+                  <span key={c.key} style={{ minWidth: c.width, fontSize: 10, textAlign: c.align ?? "left" }}>{c.label}</span>
+                ))}
               </div>
-            ))}
+              {lines.map((l, i) => {
+                const p = parsed[i];
+                const cls = classifyRow(p);
+                return (
+                  <div key={i} style={{ display: "flex", gap: 6, padding: "2px 0", whiteSpace: "nowrap", borderBottom: i < lines.length - 1 ? "1px dotted #1a1f2a" : "none" }}>
+                    <span className="muted" style={{ minWidth: 70, fontSize: 10 }}>{ageStr(l.ts)}</span>
+                    {cls.cols.map((c) => {
+                      let v: string;
+                      if (c.key === "__tag") v = p.tag || (p.raw.split(" ")[0] ?? "-");
+                      else if (c.key === "__rest") v = p.raw.replace(/^[A-Z][A-Z0-9_+]+\s*/, "").trim();
+                      else v = p.pairs[c.key] ?? "-";
+                      return (
+                        <span key={c.key} style={{
+                          minWidth: c.width,
+                          fontSize: 11,
+                          textAlign: c.align ?? "left",
+                          color: cls.rowColor ?? "#cfd5de",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }} title={c.key === "__rest" ? p.raw : `${c.key}=${v}`}>{v}</span>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
