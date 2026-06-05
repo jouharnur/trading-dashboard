@@ -697,7 +697,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
           <table>
             <thead>
               <tr>
-                <th className="desk-only">EA</th>
+                <th>EA</th>
                 <th>Symbol</th>
                 <th className="desk-only">Side</th>
                 <th>Vol</th>
@@ -709,7 +709,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
             <tbody>
               {sorted.map((p, i) => (
                 <tr key={i}>
-                  <td className="desk-only">{p.ea}</td>
+                  <td><EaBadge ea={p.ea} /></td>
                   <td>{p.symbol}</td>
                   <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
                   <td>{Number(p.volume).toFixed(2)}</td>
@@ -757,7 +757,7 @@ function DealsTable({ rows }: { rows: Deal[] }) {
                 <tr key={i}>
                   <td className="muted">{fmtTs(openedTs)}</td>
                   <td className="muted">{fmtTs(closedTs)}</td>
-                  <td>{d.ea}</td>
+                  <td><EaBadge ea={d.ea} /></td>
                   <td>{d.symbol}</td>
                   <td>{d.side === 0 ? "BUY" : "SELL"}</td>
                   <td>{Number(d.volume).toFixed(2)}</td>
@@ -775,6 +775,29 @@ function DealsTable({ rows }: { rows: Deal[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Color-coded EA badge so V5+ vs V52 trades/events are instantly recognizable
+// when both EAs are running on the same FTMO account.
+function EaBadge({ ea }: { ea: string | null | undefined }) {
+  const label = (ea || "?").toString();
+  const u = label.toUpperCase();
+  let bg = "#1a3a5c"; let fg = "#6ab0ff"; // default = V5+ blue
+  if (u === "V52" || u.startsWith("V52")) { bg = "#3d2914"; fg = "#ffba6e"; } // V52 orange
+  else if (u.includes("MM") || u.includes("MARKET")) { bg = "#2a1f3d"; fg = "#c79bff"; } // MM purple
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "1px 7px",
+      borderRadius: 3,
+      fontSize: 10,
+      fontWeight: 600,
+      background: bg,
+      color: fg,
+      letterSpacing: 0.3,
+      whiteSpace: "nowrap",
+    }}>{label}</span>
   );
 }
 
@@ -876,8 +899,9 @@ function LastLogsCard({ acct }: { acct: Account }) {
         const headerCols = firstHb ? classifyRow(firstHb).cols : EVENT_COLS;
         return (
           <div key={ea} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4 }}>
-              <strong style={{ color: "#e8ecf1" }}>{ea}</strong> · {lines.length} entries · last {ageStr(lines[0]?.ts)}
+            <div style={{ fontSize: 12, color: "#98a3b3", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              <EaBadge ea={ea} />
+              <span>· {lines.length} entries · last {ageStr(lines[0]?.ts)}</span>
             </div>
             <div style={{
               maxHeight: 380,
