@@ -1116,3 +1116,34 @@ export default function Page() {
 
   return (
     <div className="container wide">
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
+        <div className="muted">
+          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
+        </div>
+      </div>
+      {data?.accounts?.length === 0 && (
+        <div className="card">
+          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
+        </div>
+      )}
+
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
