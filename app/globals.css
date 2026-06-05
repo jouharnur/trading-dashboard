@@ -107,4 +107,40 @@ th { color: #98a3b3; font-weight: 500; }
 .dot.stale { background: #e8b56b; }
 .dot.dead { background: #d68a85; }
 
-.tabs { di
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+.tab {
+  padding: 6px 12px;
+  background: #141821;
+  border: 1px solid #232938;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #98a3b3;
+}
+.tab.active { background: #1a2030; color: #e8ecf1; border-color: #3a4359; }
+
+.back-btn {
+  background: #141821;
+  border: 1px solid #232938;
+  color: #e8ecf1;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.back-btn:active { background: #1a2030; }
+
+@media (max-width: 899px) {
+  .desk-only { display: none; }
+}
+
+.scroll-6 {
+  max-height: 240px;
+  overflow-y: auto;
+  position: relative;
+}
+.scroll-6 table thead th {
+  position: sticky;
+  top: 0;
+  background: #141821;
+  z-index: 1;
+}
