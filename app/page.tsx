@@ -1235,7 +1235,7 @@ function CrossCheckCard({ tag }: { tag: string }) {
   }, [tag]);
 
   if (err) return <div className="card"><div className="card-h">Live vs Backtest</div><div style={{ padding: 12, color: "#c66" }}>Error: {err}</div></div>;
-  if (!data) return <div className="card"><div className="card-h">Live vs Backtest</div><div style={{ padding: 12, opacity: 0.6 }}>Loading…</div></div>;
+  if (!data) return <div className="card"><div className="card-h">Live vs Backtest</div><div style={{ padding: 12, opacity: 0.6 }}>Loading...</div></div>;
 
   const pnlClass = (n: number) => (n >= 0 ? "pos" : "neg");
   const flagSeverity = data.flags.length === 0 ? "ok" : "warn";
@@ -1243,15 +1243,14 @@ function CrossCheckCard({ tag }: { tag: string }) {
   return (
     <div className="card">
       <div className="card-h">
-        Live vs Backtest <span style={{ opacity: 0.5, fontWeight: "normal", fontSize: 12 }}>· {data.date}</span>
+        Live vs Backtest <span style={{ opacity: 0.5, fontWeight: "normal", fontSize: 12 }}>{data.date}</span>
         {flagSeverity === "ok" ? (
-          <span style={{ marginLeft: 8, color: "#4caf50", fontSize: 12 }}>● clean</span>
+          <span style={{ marginLeft: 8, color: "#4caf50", fontSize: 12 }}>clean</span>
         ) : (
-          <span style={{ marginLeft: 8, color: "#ef5350", fontSize: 12 }}>● {data.flags.length} flag(s)</span>
+          <span style={{ marginLeft: 8, color: "#ef5350", fontSize: 12 }}>{data.flags.length} flag(s)</span>
         )}
       </div>
       <div style={{ padding: 12, fontSize: 13, lineHeight: 1.6 }}>
-        {/* Combined headline */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
           <div style={{ fontSize: 11, opacity: 0.6, textTransform: "uppercase", letterSpacing: 0.5 }}>Combined day P&amp;L</div>
           <div>
@@ -1264,15 +1263,14 @@ function CrossCheckCard({ tag }: { tag: string }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
-          {/* V52 */}
           <div style={{ background: "rgba(255,224,178,0.12)", padding: 8, borderRadius: 6, borderLeft: "3px solid #ffb74d" }}>
             <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 600 }}>V52 (M15 stat-arb)</div>
             <div style={{ marginTop: 4 }}>
-              {data.v52.trades_today} trade(s) · <span className={pnlClass(data.v52.day_pnl_usd)}>{fmt$(data.v52.day_pnl_usd)}</span>
+              {data.v52.trades_today} trade(s) <span className={pnlClass(data.v52.day_pnl_usd)}>{fmt$(data.v52.day_pnl_usd)}</span>
             </div>
             <div style={{ opacity: 0.6, fontSize: 11 }}>median {fmt$(data.v52.expected_median_usd)}</div>
             <div style={{ marginTop: 4, fontSize: 11 }}>
-              {data.v52.bars_evaluated} bars · {data.v52.bars_with_signals} signal(s) · peak |z|={data.v52.max_z_today}
+              {data.v52.bars_evaluated} bars, {data.v52.bars_with_signals} signal(s), peak |z|={data.v52.max_z_today}
             </div>
             {data.v52.match_rate_pct !== null && (
               <div style={{ fontSize: 11, opacity: 0.7 }}>
@@ -1282,37 +1280,34 @@ function CrossCheckCard({ tag }: { tag: string }) {
             )}
           </div>
 
-          {/* V5+ */}
           <div style={{ background: "rgba(187,222,251,0.12)", padding: 8, borderRadius: 6, borderLeft: "3px solid #64b5f6" }}>
             <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 600 }}>V5+ (H4 stat-arb)</div>
             <div style={{ marginTop: 4 }}>
-              {data.v5plus.trades_today} trade(s) · <span className={pnlClass(data.v5plus.day_pnl_usd)}>{fmt$(data.v5plus.day_pnl_usd)}</span>
+              {data.v5plus.trades_today} trade(s) <span className={pnlClass(data.v5plus.day_pnl_usd)}>{fmt$(data.v5plus.day_pnl_usd)}</span>
             </div>
             <div style={{ opacity: 0.6, fontSize: 11 }}>median {fmt$(data.v5plus.expected_median_usd)}</div>
             <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-              regime filter status: <span style={{ opacity: 0.5 }}>monitored via logs</span>
+              regime filter: <span style={{ opacity: 0.5 }}>monitored via logs</span>
             </div>
           </div>
         </div>
 
-        {/* FTMO context */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8, fontSize: 11, opacity: 0.75 }}>
           FTMO floor distance: <span className={pnlClass(data.combined.ftmo_floor_distance_usd)}>{fmt$(data.combined.ftmo_floor_distance_usd)}</span>
-          {" · "}
+          {" "}
           Phase 1 progress: {data.combined.ftmo_phase1_progress_pct}%
         </div>
 
-        {/* Flags */}
         {data.flags.length > 0 && (
           <div style={{ marginTop: 10, borderTop: "1px solid #ef5350", paddingTop: 8 }}>
             {data.flags.map((f, i) => (
-              <div key={i} style={{ color: "#ef5350", fontSize: 12, marginBottom: 2 }}>⚠️ {f}</div>
+              <div key={i} style={{ color: "#ef5350", fontSize: 12, marginBottom: 2 }}>{f}</div>
             ))}
           </div>
         )}
 
         <div style={{ marginTop: 8, fontSize: 10, opacity: 0.4 }}>
-          Last update: {ageStr(data.last_updated)} · auto-refresh 5 min
+          Last update: {ageStr(data.last_updated)}, auto-refresh 5 min
         </div>
       </div>
     </div>
@@ -1327,4 +1322,164 @@ function MobileSummaryCard({ acct, onClick }: { acct: Account; onClick: () => vo
   const baseline = acct.day_start_equity > 0 ? acct.day_start_equity : acct.day_start_balance;
   const dayGain = acct.equity - baseline;
   const dayPct = baseline > 0 ? (dayGain / baseline) * 100 : 0;
-  const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→
+  const arrow = dayGain > 0 ? "↑" : dayGain < 0 ? "↓" : "→";
+
+  // Build today's equity sparkline: filter equity_24h to broker-day start, plot equity.
+  const sodMs = (() => {
+    const n = tzShift(Date.now());
+    n.setUTCHours(0, 0, 0, 0);
+    return n.getTime() - TZ_OFFSET_H * 3600 * 1000;
+  })();
+  const sparkData = (acct.equity_24h || [])
+    .filter((p) => new Date(p.ts).getTime() >= sodMs)
+    .map((p) => ({ t: new Date(p.ts).getTime(), equity: Number(p.equity) }));
+
+  return (
+    <div className="card mobile-summary" onClick={onClick} role="button">
+      <div className="mobile-summary-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {statusDot(acct.last_seen)} <strong>{acct.tag}</strong>
+        </span>
+        <span className={cls(dayGain)} style={{ fontSize: 12, fontWeight: 600 }}>
+          {arrow} {Math.abs(dayPct).toFixed(2)}%
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "stretch" }}>
+        {/* LEFT: numbers stacked */}
+        <div style={{ flex: 1, textAlign: "left", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Equity</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.equity)}</div>
+            <div className="muted" style={{ fontSize: 9 }}>bal {fmt$(acct.balance)}</div>
+          </div>
+          <div>
+            <div className="muted" style={{ fontSize: 10 }}>Floating</div>
+            <div className={cls(acct.floating)} style={{ fontSize: 14, fontWeight: 600 }}>{fmt$(acct.floating)}</div>
+            <div className={"muted " + cls(acct.pnl_today)} style={{ fontSize: 9 }}>today {fmt$(acct.pnl_today)}</div>
+          </div>
+        </div>
+        {/* RIGHT: full-height intraday equity chart */}
+        <div style={{ flex: 1.4, height: 110, minWidth: 0 }}>
+          {sparkData.length >= 2 && baseline > 0 ? (
+            <ResponsiveContainer>
+              <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                {/* Domain must explicitly include the day-open baseline, otherwise
+                    the ReferenceLine renders OUTSIDE the chart's auto-fit range. */}
+                <YAxis
+                  hide
+                  domain={[
+                    (dataMin: number) => Math.min(dataMin, baseline) - Math.abs(baseline) * 0.0005,
+                    (dataMax: number) => Math.max(dataMax, baseline) + Math.abs(baseline) * 0.0005,
+                  ]}
+                />
+                <ReferenceLine y={baseline} stroke="#e9b94a" strokeDasharray="2 3" strokeWidth={1} />
+                <Line
+                  type="monotone"
+                  dataKey="equity"
+                  stroke={dayGain >= 0 ? "#6ab0ff" : "#e57373"}
+                  dot={false}
+                  strokeWidth={1.5}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="muted" style={{ fontSize: 10, textAlign: "center", lineHeight: "110px" }}>no data yet</div>
+          )}
+        </div>
+      </div>
+      <div className="muted" style={{ textAlign: "center", marginTop: 4, fontSize: 10 }}>
+        tap for details
+      </div>
+    </div>
+  );
+}
+
+export default function Page() {
+  const [data, setData] = useState<Resp | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    const fetchOnce = async () => {
+      try {
+        const r = await fetch("/api/data", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as Resp;
+        if (alive) {
+          setData(j);
+          setErr(null);
+        }
+      } catch (e: any) {
+        if (alive) setErr(e?.message || "fetch failed");
+      }
+    };
+    fetchOnce();
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+      fetchOnce();
+    }, POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  if (isMobile && expanded && data) {
+    const acct = data.accounts.find((a) => a.tag === expanded);
+    return (
+      <div className="container wide">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
+          <button className="back-btn" onClick={() => setExpanded(null)}>back</button>
+          <div className="muted">
+            {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
+          </div>
+        </div>
+        {acct ? <AccountBlock acct={acct} /> : <div className="card muted">account not found</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="container wide">
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 style={{ fontSize: 20, margin: "8px 0" }}>RD11 Dashboard</h1>
+        <div className="muted">
+          {err ? <span className="neg">error: {err}</span> : data ? `updated ${tzShift(data.fetched_at).toISOString().substring(11, 19)} ${TZ_LABEL}` : "loading..."}
+        </div>
+      </div>
+      {data?.accounts?.length === 0 && (
+        <div className="card">
+          <div className="muted">No telemetry yet. Attach Telemetry_V1.mq5 to a chart on each VPS.</div>
+        </div>
+      )}
+
+
+      {isMobile ? (
+        <div className="mobile-summary-grid">
+          {data?.accounts?.map((a) => (
+            <MobileSummaryCard key={a.tag} acct={a} onClick={() => setExpanded(a.tag)} />
+          ))}
+        </div>
+      ) : (
+        <div className="accounts-grid">
+          {data?.accounts?.map((a) => (
+            <div key={a.tag} className="account-col">
+              <AccountBlock acct={a} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
