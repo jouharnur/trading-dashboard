@@ -681,11 +681,43 @@ function fmtOpenTime(iso: string | null | undefined) {
   return `${mm}-${dd} ${hh}:${mn}`;
 }
 
+// Clickable sortable column header. First click sorts descending; clicking
+// the active column again flips direction. Used in PositionsTable + DealsTable.
+function SortableTh(props: { label: string; k: string; sort: { key: string; dir: number }; setSort: (s: { key: string; dir: number }) => void; className?: string }) {
+  const { label, k, sort, setSort, className } = props;
+  const active = sort.key === k;
+  const arrow = active ? (sort.dir === 1 ? " ↑" : " ↓") : "";
+  return (
+    <th
+      className={className}
+      onClick={() => setSort({ key: k, dir: active ? -sort.dir : -1 })}
+      style={{ cursor: "pointer", userSelect: "none" }}
+      title="Click to sort"
+    >
+      {label}{arrow}
+    </th>
+  );
+}
+
 function PositionsTable({ rows }: { rows: Position[] }) {
-  const sorted = rows.slice().sort((a, b) => {
-    const ta = new Date(a.open_time || 0).getTime();
-    const tb = new Date(b.open_time || 0).getTime();
-    return tb - ta;
+  const [sort, setSort] = useState({ key: "open_time", dir: -1 });
+  const getVal = (r: any) => {
+    switch (sort.key) {
+      case "ea": return r.ea || "";
+      case "symbol": return r.symbol || "";
+      case "side": return Number(r.side ?? 0);
+      case "volume": return Number(r.volume ?? 0);
+      case "pnl": return Number(r.profit ?? 0) + Number(r.swap ?? 0);
+      case "open_time": return new Date(r.open_time || 0).getTime();
+      case "comment": return r.comment || "";
+      default: return 0;
+    }
+  };
+  const sorted = (rows as any[]).slice().sort((a: any, b: any) => {
+    const va = getVal(a), vb = getVal(b);
+    if (va < vb) return -sort.dir;
+    if (va > vb) return sort.dir;
+    return 0;
   });
 
   return (
@@ -698,13 +730,13 @@ function PositionsTable({ rows }: { rows: Position[] }) {
           <table>
             <thead>
               <tr>
-                <th>EA</th>
-                <th>Symbol</th>
-                <th className="desk-only">Side</th>
-                <th>Vol</th>
-                <th>P&amp;L</th>
-                <th>Opened (UTC+3)</th>
-                <th className="desk-only">Comment</th>
+                <SortableTh label="EA" k="ea" sort={sort} setSort={setSort} />
+                <SortableTh label="Symbol" k="symbol" sort={sort} setSort={setSort} />
+                <SortableTh label="Side" k="side" sort={sort} setSort={setSort} className="desk-only" />
+                <SortableTh label="Vol" k="volume" sort={sort} setSort={setSort} />
+                <SortableTh label="P&L" k="pnl" sort={sort} setSort={setSort} />
+                <SortableTh label="Opened (UTC+3)" k="open_time" sort={sort} setSort={setSort} />
+                <SortableTh label="Comment" k="comment" sort={sort} setSort={setSort} className="desk-only" />
               </tr>
             </thead>
             <tbody>
@@ -728,28 +760,48 @@ function PositionsTable({ rows }: { rows: Position[] }) {
 }
 
 function DealsTable({ rows }: { rows: Deal[] }) {
+  const [sort, setSort] = useState({ key: "closed_at", dir: -1 });
+  const getVal = (r: any) => {
+    switch (sort.key) {
+      case "opened_at": return new Date((r as any).opened_at || 0).getTime();
+      case "closed_at": return new Date(r.closed_at || 0).getTime();
+      case "ea": return r.ea || "";
+      case "symbol": return r.symbol || "";
+      case "side": return Number(r.side ?? 0);
+      case "volume": return Number(r.volume ?? 0);
+      case "pnl": return Number(r.profit ?? 0) + Number(r.swap ?? 0) + Number(r.commission ?? 0);
+      case "comment": return (r as any).comment || "";
+      default: return 0;
+    }
+  };
+  const sorted = (rows as any[]).slice().sort((a: any, b: any) => {
+    const va = getVal(a), vb = getVal(b);
+    if (va < vb) return -sort.dir;
+    if (va > vb) return sort.dir;
+    return 0;
+  });
   return (
     <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
       <h3>Recent closed deals</h3>
-      {rows.length === 0 ? (
+      {sorted.length === 0 ? (
         <div className="muted">- none in the last 30 days -</div>
       ) : (
         <div className="scroll-6">
         <table>
           <thead>
             <tr>
-              <th>Opened</th>
-              <th>Closed</th>
-              <th>EA</th>
-              <th>Symbol</th>
-              <th>Side</th>
-              <th>Vol</th>
-              <th>P&amp;L</th>
-              <th className="desk-only">Comment</th>
+              <SortableTh label="Opened" k="opened_at" sort={sort} setSort={setSort} />
+              <SortableTh label="Closed" k="closed_at" sort={sort} setSort={setSort} />
+              <SortableTh label="EA" k="ea" sort={sort} setSort={setSort} />
+              <SortableTh label="Symbol" k="symbol" sort={sort} setSort={setSort} />
+              <SortableTh label="Side" k="side" sort={sort} setSort={setSort} />
+              <SortableTh label="Vol" k="volume" sort={sort} setSort={setSort} />
+              <SortableTh label="P&L" k="pnl" sort={sort} setSort={setSort} />
+              <SortableTh label="Comment" k="comment" sort={sort} setSort={setSort} className="desk-only" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((d, i) => {
+            {sorted.map((d: any, i: number) => {
               const closedTs = d.closed_at ? new Date(d.closed_at) : null;
               const openedTs = (d as any).opened_at ? new Date((d as any).opened_at) : null;
               const fmtTs = (x: Date | null) =>
@@ -1034,6 +1086,83 @@ function LastLogsCard({ acct }: { acct: Account }) {
   );
 }
 
+// Parses configured EA settings out of recent heartbeat / init log messages.
+// V52 init: "FIXED mode: $1000/R ... DailyHalt=$4000, 11 pairs M15"
+// V5+ init: "[Init] ACCT10. Risk=1.00%, ML=0.00, MaxLayers=3, Trade=T, FTMO=T"
+// V5+ DAY_OPEN: "DAY_OPEN equity=101748.67 halt_thresh=1000.00"
+// Renders as collapsible <details> so it doesn't take screen space by default.
+function SettingsCard({ acct }: { acct: Account }) {
+  const allLogs = Object.values(acct.last_logs || {}).flat();
+  const findMsg = (re: RegExp): string | null => {
+    for (const l of allLogs) {
+      if (l && typeof l.message === "string" && re.test(l.message)) return l.message;
+    }
+    return null;
+  };
+  const v52Init = findMsg(/DailyHalt=\$[\d,.]+.*pairs/i);
+  const v5Init = findMsg(/\[Init\].*Risk=/i);
+  const dayOpen = findMsg(/DAY_OPEN.*halt_thresh=/i);
+  const kv = (msg: string | null, re: RegExp): string | null => {
+    if (!msg) return null;
+    const m = msg.match(re);
+    return m ? m[1] : null;
+  };
+  const v52 = {
+    mode: kv(v52Init, /^(\w+)\s+mode/),
+    perR: kv(v52Init, /\$([\d,]+)\/R/),
+    dailyHalt: kv(v52Init, /DailyHalt=\$([\d,]+)/),
+    pairs: kv(v52Init, /(\d+)\s*pairs/),
+  };
+  const v5 = {
+    risk: kv(v5Init, /Risk=([\d.]+)%/),
+    maxLayers: kv(v5Init, /MaxLayers=(\d+)/),
+    trade: kv(v5Init, /Trade=(\w)/),
+    ftmo: kv(v5Init, /FTMO=(\w)/),
+    haltThresh: kv(dayOpen, /halt_thresh=([\d.]+)/),
+  };
+  const hasV52 = Object.values(v52).some((x) => x !== null);
+  const hasV5 = Object.values(v5).some((x) => x !== null);
+  if (!hasV52 && !hasV5) return null;
+  const row = (label: string, val: string | null) => (
+    val ? (
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px dashed #2a3340" }}>
+        <span className="muted">{label}</span>
+        <span style={{ fontWeight: 600 }}>{val}</span>
+      </div>
+    ) : null
+  );
+  return (
+    <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
+      <details>
+        <summary style={{ cursor: "pointer", userSelect: "none", padding: "4px 0", fontWeight: 600 }}>
+          Strategy settings <span className="muted" style={{ fontSize: 11, fontWeight: "normal" }}>(parsed from heartbeats)</span>
+        </summary>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 10, fontSize: 12 }}>
+          {hasV52 && (
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>V52</div>
+              {row("Mode", v52.mode)}
+              {row("Per R ($)", v52.perR)}
+              {row("Daily halt ($)", v52.dailyHalt)}
+              {row("Pairs", v52.pairs)}
+            </div>
+          )}
+          {hasV5 && (
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>V5+</div>
+              {row("Risk %", v5.risk)}
+              {row("Max layers", v5.maxLayers)}
+              {row("Trade enabled", v5.trade)}
+              {row("FTMO mode", v5.ftmo)}
+              {row("Halt thresh ($)", v5.haltThresh)}
+            </div>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function AccountBlock({ acct }: { acct: Account }) {
   const [chart, setChart] = useState<"24h" | "today" | "7d" | "30d">("24h");
   // The yellow ReferenceLine is pinned to broker-day-start equity. The line
@@ -1171,6 +1300,10 @@ function AccountBlock({ acct }: { acct: Account }) {
           <CrossCheckCard tag={acct.tag} />
         </div>
       )}
+
+      <div className="row" style={{ marginTop: 12 }}>
+        <SettingsCard acct={acct} />
+      </div>
 
       <div style={{ marginTop: 12 }}>
         <LastLogsCard acct={acct} />
