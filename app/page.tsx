@@ -1086,77 +1086,126 @@ function LastLogsCard({ acct }: { acct: Account }) {
   );
 }
 
-// Parses configured EA settings out of recent heartbeat / init log messages.
-// V52 init: "FIXED mode: $1000/R ... DailyHalt=$4000, 11 pairs M15"
-// V5+ init: "[Init] ACCT10. Risk=1.00%, ML=0.00, MaxLayers=3, Trade=T, FTMO=T"
-// V5+ DAY_OPEN: "DAY_OPEN equity=101748.67 halt_thresh=1000.00"
-// Renders as collapsible <details> so it doesn't take screen space by default.
+// Parses configured EA settings from log messages stored in acct.last_logs.
+// Three sources, in priority order:
+//   1) Live heartbeat (fires ~2 min) — shows the live runtime config:
+//        V52 heartbeat: "open=N/M equity=$X R=$X maxZ=X.XX need=X.X market=Y"
+//   2) Init line (fires once at EA startup, may age out of recent logs):
+//        V52 init:  "FIXED mode: $1000/R"  or  "PCT mode: 1.50% of balance, capped at $X"
+//        V5+ init:  "[Init] ACCT10. Risk=1.00%, ML=0.00, MaxLayers=3, Trade=T, FTMO=T"
+//   3) DAY_OPEN line (fires at broker midnight, carries halt threshold):
+//        "DAY_OPEN equity=101748.67 halt_thresh=1000.00"
+// Always renders the card so the user sees a placeholder when no values are
+// available, instead of the card silently disappearing.
 function SettingsCard({ acct }: { acct: Account }) {
   const allLogs = Object.values(acct.last_logs || {}).flat();
-  const findMsg = (re: RegExp): string | null => {
-    for (const l of allLogs) {
+  const v52Logs = (acct.last_logs || {})["V52"] || [];
+  const v5Logs = (acct.last_logs || {})["V5+"] || (acct.last_logs || {})["ACCT10"] || [];
+
+  const findMsg = (logs: any[], re: RegExp): string | null => {
+    for (const l of logs) {
       if (l && typeof l.message === "string" && re.test(l.message)) return l.message;
     }
     return null;
   };
-  const v52Init = findMsg(/DailyHalt=\$[\d,.]+.*pairs/i);
-  const v5Init = findMsg(/\[Init\].*Risk=/i);
-  const dayOpen = findMsg(/DAY_OPEN.*halt_thresh=/i);
+  const findAny = (re: RegExp) => findMsg(allLogs, re);
   const kv = (msg: string | null, re: RegExp): string | null => {
     if (!msg) return null;
     const m = msg.match(re);
     return m ? m[1] : null;
   };
+
+  // V52: prefer the latest heartbeat for live config; fall back to init lines.
+  const v52Hb = findMsg(v52Logs, /open=\d+\/\d+.*R=\$.*need=/i)
+             || findAny(/open=\d+\/\d+.*R=\$.*need=/i);
+  const v52Init = findAny(/(FIXED|PCT)\s+mode/i);
+  const v52DailyHaltMsg = findAny(/DailyHalt[=:]\s*\$?[\d,.]+/i);
   const v52 = {
-    mode: kv(v52Init, /^(\w+)\s+mode/),
-    perR: kv(v52Init, /\$([\d,]+)\/R/),
-    dailyHalt: kv(v52Init, /DailyHalt=\$([\d,]+)/),
-    pairs: kv(v52Init, /(\d+)\s*pairs/),
+    open: kv(v52Hb, /open=(\d+\/\d+)/),
+    rPerTrade: kv(v52Hb, /R=\$?([\d.]+)/),
+    entryZ: kv(v52Hb, /need=([\d.]+)/),
+    market: kv(v52Hb, /market=(\w+)/),
+    mode: kv(v52Init, /^(FIXED|PCT)\s+mode/i),
+    riskFixed: kv(v52Init, /\$([\d,]+)\/R/),
+    riskPct: kv(v52Init, /([\d.]+)%\s+of balance/),
+    riskCap: kv(v52Init, /capped at \$?([\d,]+)/),
+    dailyHalt: kv(v52DailyHaltMsg, /DailyHalt[=:]\s*\$?([\d,.]+)/),
   };
+
+  // V5+: init carries .set values; DAY_OPEN carries halt threshold.
+  const v5Init = findAny(/\[Init\].*Risk=/i);
+  const dayOpen = findAny(/DAY_OPEN.*halt_thresh=/i);
   const v5 = {
     risk: kv(v5Init, /Risk=([\d.]+)%/),
     maxLayers: kv(v5Init, /MaxLayers=(\d+)/),
     trade: kv(v5Init, /Trade=(\w)/),
     ftmo: kv(v5Init, /FTMO=(\w)/),
+    ml: kv(v5Init, /ML=([\d.]+)/),
     haltThresh: kv(dayOpen, /halt_thresh=([\d.]+)/),
+    equityAtOpen: kv(dayOpen, /equity=([\d.]+)/),
   };
-  const hasV52 = Object.values(v52).some((x) => x !== null);
-  const hasV5 = Object.values(v5).some((x) => x !== null);
-  if (!hasV52 && !hasV5) return null;
-  const row = (label: string, val: string | null) => (
+
+  const hasV52 = !!(v52.open || v52.rPerTrade || v52.entryZ || v52.mode || v52.dailyHalt);
+  const hasV5 = !!(v5.risk || v5.maxLayers || v5.haltThresh);
+
+  const row = (label: string, val: string | null, suffix: string = "") => (
     val ? (
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px dashed #2a3340" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px dashed #2a3340" }}>
         <span className="muted">{label}</span>
-        <span style={{ fontWeight: 600 }}>{val}</span>
+        <span style={{ fontWeight: 600 }}>{val}{suffix}</span>
       </div>
     ) : null
   );
+
   return (
     <div className="card card-wide" style={{ flex: 2, minWidth: 480 }}>
       <details>
         <summary style={{ cursor: "pointer", userSelect: "none", padding: "4px 0", fontWeight: 600 }}>
-          Strategy settings <span className="muted" style={{ fontSize: 11, fontWeight: "normal" }}>(parsed from heartbeats)</span>
+          Strategy settings
+          <span className="muted" style={{ fontSize: 11, fontWeight: "normal", marginLeft: 6 }}>
+            (live values parsed from heartbeats / init / DAY_OPEN)
+          </span>
         </summary>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 10, fontSize: 12 }}>
-          {hasV52 && (
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>V52</div>
-              {row("Mode", v52.mode)}
-              {row("Per R ($)", v52.perR)}
-              {row("Daily halt ($)", v52.dailyHalt)}
-              {row("Pairs", v52.pairs)}
+          {hasV52 ? (
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: "#6ab0ff" }}>V52</div>
+              {row("Open / Universe", v52.open)}
+              {row("R per trade", v52.rPerTrade, " $")}
+              {row("Entry Z threshold", v52.entryZ)}
+              {row("Sizing mode", v52.mode)}
+              {row("Fixed $ per R", v52.riskFixed, " $")}
+              {row("Risk % of balance", v52.riskPct, " %")}
+              {row("Risk cap", v52.riskCap, " $")}
+              {row("Daily halt", v52.dailyHalt, " $")}
+              {row("Market state", v52.market)}
+            </div>
+          ) : (
+            <div style={{ flex: 1, minWidth: 240, opacity: 0.6 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: "#6ab0ff" }}>V52</div>
+              <div className="muted" style={{ fontSize: 11 }}>No V52 heartbeat in recent logs.</div>
             </div>
           )}
-          {hasV5 && (
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>V5+</div>
-              {row("Risk %", v5.risk)}
+          {hasV5 ? (
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: "#e8b04c" }}>V5+</div>
+              {row("Risk %", v5.risk, " %")}
               {row("Max layers", v5.maxLayers)}
+              {row("ML threshold", v5.ml)}
               {row("Trade enabled", v5.trade)}
               {row("FTMO mode", v5.ftmo)}
-              {row("Halt thresh ($)", v5.haltThresh)}
+              {row("Equity at day-open", v5.equityAtOpen, " $")}
+              {row("Halt threshold", v5.haltThresh, " $")}
+            </div>
+          ) : (
+            <div style={{ flex: 1, minWidth: 240, opacity: 0.6 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, color: "#e8b04c" }}>V5+</div>
+              <div className="muted" style={{ fontSize: 11 }}>No V5+ [Init] / DAY_OPEN line in recent logs.</div>
             </div>
           )}
+        </div>
+        <div className="muted" style={{ fontSize: 10, marginTop: 10, opacity: 0.6 }}>
+          Init / DAY_OPEN lines fire at EA startup and broker midnight respectively — they may age out of recent logs. Heartbeats fire every ~2 minutes.
         </div>
       </details>
     </div>
