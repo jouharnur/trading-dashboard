@@ -276,7 +276,7 @@ function OpenPositionsCard({ acct }: { acct: Account }) {
   const toPct = (v: number) => ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
 
   return (
-    <div className="card" style={{ flex: 2, minWidth: 360 }}>
+    <div className="card" style={{ flex: 1, minWidth: 280 }}>
       <h3>V52 Open Positions — Z range</h3>
       <div style={{ fontSize: 11, color: "#98a3b3", marginBottom: 8 }}>
         Scale: [{SCALE_MIN}, {SCALE_MAX}] · Entry threshold ±{ENTRY_Z} · Exit at z=0 · Stop at ±{STOP_Z}
