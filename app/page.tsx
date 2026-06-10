@@ -1374,9 +1374,12 @@ function LastLogsCard({ acct }: { acct: Account }) {
           if (u.includes("POS_CLOSED") || u.includes("POSITION_RECOVERED")) return true;
           if (msg.match(/open=\d+\/\d+\s+equity=/)) return false;
           if (msg.startsWith("bal=") || msg.startsWith("[Heartbeat]")) return false;
-          if (msg.match(/M15 bar .+ \|.+\|.+max\|z\|=/)) return false;
           if (msg.includes("POS_STATE ")) return false;
-          if (msg.includes("[BarSigs]") || msg.includes("[BarDone]") || msg.includes("[BarState]")) return false;
+          if (msg.includes("[BarState]")) return false;
+          // KEEP per-bar summaries — user wants to see every 15min event:
+          // - "V52_P1A: M15 bar ... | EG_GC=... | max|z|=X"  (V52 bar scan)
+          // - "[BarDone] BAR=... eval=... entry=... quiet=..."  (V5+ funnel)
+          // - "[BarSigs] SIGS bar=... | pair:outcome:z | ..."  (V5+ per-pair)
           return true;
         };
         // Filter LINES first so subsequent index-based access (parsed[i]) lines up correctly
