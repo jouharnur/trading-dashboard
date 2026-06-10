@@ -914,15 +914,27 @@ const EVENT_COLS: LogCol[] = [
 
 function classifyRow(p: LogParse): { cols: LogCol[]; rowColor?: string } {
   const u = p.raw.toUpperCase();
+  // CRITICAL events (red)
   if (u.includes("FAILED") || u.includes("ABS_KILL") || u.includes("DAILY_HALT") || u.startsWith("DASH_FAIL")) {
     return { cols: EVENT_COLS, rowColor: "#e57373" };
   }
-  if (p.raw.startsWith("OPEN ") || u.includes("PROFIT_LOCK")) {
+  // PROTECTION events — V52 + V5+ per-trade stop, broken-hedge skip (NEW 2026-06-10)
+  if (u.includes("PER_TRADE_STOP") || u.includes("BROKEN_HEDGE_MINLOT") || u.includes("MIN_LOT_BUFFER")) {
+    return { cols: EVENT_COLS, rowColor: "#ff9966" };  // amber-orange
+  }
+  // BETA SIZING info (V52 new sizing formula) — light blue
+  if (u.includes("BETA_SIZING")) {
+    return { cols: EVENT_COLS, rowColor: "#8ec5ff" };
+  }
+  // PROFIT events — green
+  if (p.raw.startsWith("OPEN ") || u.includes("PROFIT_LOCK") || u.includes("MEAN_REVERT") || u.includes("MEAN_REV")) {
     return { cols: EVENT_COLS, rowColor: "#7ec99e" };
   }
-  if (p.raw.startsWith("CLOSE ") || p.raw.startsWith("CORR_SKIP")) {
+  // GATING / WARNING events — yellow
+  if (p.raw.startsWith("CLOSE ") || p.raw.startsWith("CORR_SKIP") || u.includes("MIN_LOT") || u.includes("VOL_SKIP") || u.includes("REGIME_PAUSE")) {
     return { cols: EVENT_COLS, rowColor: "#e9b94a" };
   }
+  // HEARTBEAT detection (V52 has equity+R, V5+ has equity+bal)
   if ("equity" in p.pairs && "R" in p.pairs) return { cols: V52_HB_COLS };
   if ("equity" in p.pairs && "bal" in p.pairs) return { cols: V5_HB_COLS };
   return { cols: EVENT_COLS };
