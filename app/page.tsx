@@ -897,7 +897,86 @@ function SortableTh(props: { label: string; k: string; sort: { key: string; dir:
   );
 }
 
-function PositionsTable({ rows }: { rows: Position[] }) {
+
+// === Z DATA EXTRACTION (NEW 2026-06-10) ===
+// Parses POS_STATE (open) and POS_CLOSED / CLOSE (close) events from V52 + V5+ logs.
+// Tables use this to enrich open-position and closed-deal rows with Z journey data.
+type ZOpen = { entry_z: number; cur_z: number; min_z: number; max_z: number; bars: number; ts: string };
+type ZClose = { pair: string; entry_z: number; exit_z: number; min_z: number; max_z: number; reason: string; bars: number; ts: string };
+type ZData = { opens: Record<string, ZOpen>; closes: ZClose[] };
+
+function extractPairFromComment(comment: string): string {
+  // V52: "V52_GJ_UJ_LA" → "GJ_UJ"   ("V52_" + tag + "_" + side + "A"/"B")
+  // V5+: "EURUSD/USDCAD_L1_A" → "EURUSD/USDCAD"
+  if (!comment) return "";
+  if (comment.startsWith("V52_")) {
+    const m = comment.match(/^V52_(.+?)_[LS][AB]$/);
+    if (m) return m[1];
+  }
+  // V5+ pattern: pair_name "_L" + layer + "_A"/"_B"
+  const m2 = comment.match(/^(\S+?)_L\d+_[AB]$/);
+  if (m2) return m2[1];
+  return comment;
+}
+
+function useZData(acct: Account): ZData {
+  const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
+  const v5pLogs = (acct.last_logs && acct.last_logs["V5+"]) || (acct.last_logs && acct.last_logs["ACCT10"]) || [];
+  const opens: Record<string, ZOpen> = {};
+  const closes: ZClose[] = [];
+  const reOpen = /POS_STATE\s+(\S+)\s+dir=-?\d+\s+entry_z=(-?[0-9.]+)\s+cur_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  const reCloseV52 = /CLOSE\s+(\S+)\s+reason=(\w+)\s+legs=\d+\s+entry_z=(-?[0-9.]+)\s+exit_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  const reCloseV5 = /POS_CLOSED\s+(\S+)\s+reason=(\w+)\s+entry_z=(-?[0-9.]+)\s+exit_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  for (const logs of [v52Logs, v5pLogs]) {
+    for (const e of logs) {
+      const m = (e.message || "").match(reOpen);
+      if (m && !opens[m[1]]) {
+        opens[m[1]] = {
+          entry_z: parseFloat(m[2]), cur_z: parseFloat(m[3]),
+          min_z: parseFloat(m[4]), max_z: parseFloat(m[5]),
+          bars: parseInt(m[6]), ts: e.ts,
+        };
+        continue;
+      }
+      const mc = (e.message || "").match(reCloseV52) || (e.message || "").match(reCloseV5);
+      if (mc) {
+        closes.push({
+          pair: mc[1],
+          entry_z: parseFloat(mc[3]), exit_z: parseFloat(mc[4]),
+          min_z: parseFloat(mc[5]), max_z: parseFloat(mc[6]),
+          reason: mc[2], bars: parseInt(mc[7]), ts: e.ts,
+        });
+      }
+    }
+  }
+  return { opens, closes };
+}
+
+// Compact inline Z slider — used in PositionsTable row
+function ZSliderInline({ z }: { z: ZOpen }) {
+  const STOP_Z = 4.5;
+  const toPct = (v: number) => Math.max(0, Math.min(100, ((v + STOP_Z) / (2 * STOP_Z)) * 100));
+  const reverting = Math.abs(z.cur_z) < Math.abs(z.entry_z);
+  const curColor = reverting ? "#7ec99e" : "#e57373";
+  return (
+    <div style={{ minWidth: 120, fontSize: 10, fontFamily: "monospace" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", color: "#98a3b3" }}>
+        <span>{z.entry_z.toFixed(2)}→<span style={{ color: curColor }}>{z.cur_z.toFixed(2)}</span></span>
+        <span>[{z.min_z.toFixed(2)},{z.max_z.toFixed(2)}]</span>
+      </div>
+      <div style={{ position: "relative", height: 4, background: "#1a2030", borderRadius: 2, marginTop: 2 }}>
+        <div style={{ position: "absolute", left: toPct(z.min_z) + "%", width: (toPct(z.max_z) - toPct(z.min_z)) + "%", top: 0, bottom: 0, background: "#3a4458" }} />
+        <div style={{ position: "absolute", left: "50%", top: -1, bottom: -1, width: 1, background: "#7ec99e" }} title="z=0 exit" />
+        <div style={{ position: "absolute", left: "calc(" + toPct(z.entry_z) + "% - 1px)", top: -1, bottom: -1, width: 2, background: "#8ec5ff" }} title={"entry " + z.entry_z.toFixed(2)} />
+        <div style={{ position: "absolute", left: "calc(" + toPct(z.cur_z) + "% - 2px)", top: -2, bottom: -2, width: 4, background: curColor, borderRadius: 1 }} title={"current " + z.cur_z.toFixed(2)} />
+      </div>
+    </div>
+  );
+}
+
+function PositionsTable({ rows, acct }: { rows: Position[]; acct: Account }) {
+  const zdata = useZData(acct);
+  // Group rows by pair so we render one row per PAIR (combining the two legs) — clearer for stat-arb.
   const [sort, setSort] = useState({ key: "open_time", dir: -1 });
   const getVal = (r: any) => {
     switch (sort.key) {
@@ -933,6 +1012,7 @@ function PositionsTable({ rows }: { rows: Position[] }) {
                 <SortableTh label="Side" k="side" sort={sort} setSort={setSort} className="desk-only" />
                 <SortableTh label="Vol" k="volume" sort={sort} setSort={setSort} />
                 <SortableTh label="P&L" k="pnl" sort={sort} setSort={setSort} />
+                <th className="desk-only"><span style={{ color: "#98a3b3", fontSize: 11 }}>Z range</span></th>
                 <SortableTh label="Opened (UTC+3)" k="open_time" sort={sort} setSort={setSort} />
                 <SortableTh label="Comment" k="comment" sort={sort} setSort={setSort} className="desk-only" />
               </tr>
@@ -945,6 +1025,11 @@ function PositionsTable({ rows }: { rows: Position[] }) {
                   <td className="desk-only">{p.side === 0 ? "BUY" : "SELL"}</td>
                   <td>{Number(p.volume).toFixed(2)}</td>
                   <td className={cls(Number(p.profit))}>{fmt$(Number(p.profit) + Number(p.swap ?? 0))}</td>
+                  <td className="desk-only">{(() => {
+                    const pair = extractPairFromComment(p.comment || "");
+                    const z = pair && zdata.opens[pair];
+                    return z ? <ZSliderInline z={z} /> : <span className="muted" style={{ fontSize: 10 }}>—</span>;
+                  })()}</td>
                   <td className="muted">{fmtOpenTime(p.open_time)}</td>
                   <td className="muted desk-only">{p.comment}</td>
                 </tr>
@@ -957,7 +1042,13 @@ function PositionsTable({ rows }: { rows: Position[] }) {
   );
 }
 
-function DealsTable({ rows }: { rows: Deal[] }) {
+function DealsTable({ rows, acct }: { rows: Deal[]; acct: Account }) {
+  const zdata = useZData(acct);
+  // Build a map from pair name to its most recent close (sorted by ts desc)
+  const closesByPair: Record<string, ZClose> = {};
+  for (const c of zdata.closes) {
+    // We need pair name to match deals — use comment heuristic later
+  }
   const [sort, setSort] = useState({ key: "closed_at", dir: -1 });
   const getVal = (r: any) => {
     switch (sort.key) {
@@ -995,6 +1086,8 @@ function DealsTable({ rows }: { rows: Deal[] }) {
               <SortableTh label="Side" k="side" sort={sort} setSort={setSort} />
               <SortableTh label="Vol" k="volume" sort={sort} setSort={setSort} />
               <SortableTh label="P&L" k="pnl" sort={sort} setSort={setSort} />
+              <th className="desk-only"><span style={{ color: "#98a3b3", fontSize: 11 }}>Z open→close</span></th>
+              <th className="desk-only"><span style={{ color: "#98a3b3", fontSize: 11 }}>Reason</span></th>
               <SortableTh label="Comment" k="comment" sort={sort} setSort={setSort} className="desk-only" />
             </tr>
           </thead>
@@ -1015,6 +1108,41 @@ function DealsTable({ rows }: { rows: Deal[] }) {
                   <td className={cls(Number(d.profit))}>
                     {fmt$(Number(d.profit) + Number(d.swap ?? 0) + Number(d.commission ?? 0))}
                   </td>
+                  <td className="desk-only">{(() => {
+                    const pair = extractPairFromComment((d as any).comment || "");
+                    const dealTs = d.closed_at ? new Date(d.closed_at).getTime() : 0;
+                    let bestMatch: ZClose | null = null;
+                    let bestDiff = Number.MAX_VALUE;
+                    for (const c of zdata.closes) {
+                      // Match by pair name + time proximity (within 30 min for safety)
+                      if (pair && c.pair !== pair) continue;
+                      const tsDiff = Math.abs(new Date(c.ts).getTime() - dealTs);
+                      if (tsDiff < bestDiff && tsDiff < 30 * 60 * 1000) {
+                        bestMatch = c; bestDiff = tsDiff;
+                      }
+                    }
+                    if (!bestMatch) return <span className="muted" style={{ fontSize: 10 }}>—</span>;
+                    const reverted = Math.abs(bestMatch.exit_z) < Math.abs(bestMatch.entry_z);
+                    return (
+                      <span style={{ fontSize: 11, fontFamily: "monospace" }}>
+                        <span style={{ color: "#8ec5ff" }}>{bestMatch.entry_z.toFixed(2)}</span>
+                        <span style={{ color: "#666" }}>→</span>
+                        <span style={{ color: reverted ? "#7ec99e" : "#e57373" }}>{bestMatch.exit_z.toFixed(2)}</span>
+                      </span>
+                    );
+                  })()}</td>
+                  <td className="desk-only muted" style={{ fontSize: 11 }}>{(() => {
+                    const pair = extractPairFromComment((d as any).comment || "");
+                    const dealTs = d.closed_at ? new Date(d.closed_at).getTime() : 0;
+                    let best: ZClose | null = null;
+                    let bestDiff = Number.MAX_VALUE;
+                    for (const c of zdata.closes) {
+                      if (pair && c.pair !== pair) continue;
+                      const tsDiff = Math.abs(new Date(c.ts).getTime() - dealTs);
+                      if (tsDiff < bestDiff && tsDiff < 30 * 60 * 1000) { best = c; bestDiff = tsDiff; }
+                    }
+                    return best ? best.reason : "—";
+                  })()}</td>
                   <td className="desk-only muted" style={{ fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {(d as any).comment || ""}
                   </td>
@@ -1235,7 +1363,27 @@ function LastLogsCard({ acct }: { acct: Account }) {
         </div>
       )}
       {entries.map(([ea, lines]) => {
-        const parsed = lines.map((l) => parseLogPairs(l.message));
+        // Filter to important events only — hide routine heartbeats and per-bar z scans (NEW 2026-06-10)
+        const isImportant = (msg: string): boolean => {
+          const u = msg.toUpperCase();
+          // Always show: actions, errors, gating events, sizing, signals
+          if (u.includes("OPEN ") || u.includes("CLOSE ") || u.includes("OPEN_FAILED")) return true;
+          if (u.includes("HALT") || u.includes("LOCK") || u.includes("ABS_KILL") || u.includes("EMERGENCY")) return true;
+          if (u.includes("PER_TRADE_STOP") || u.includes("BROKEN_HEDGE")) return true;
+          if (u.includes("BETA_SIZING") || u.includes("BALANCE_JUMP")) return true;
+          if (u.includes("CORR_SKIP") || u.includes("MIN_LOT_BUFFER")) return true;
+          if (u.includes("POS_CLOSED") || u.includes("POSITION_RECOVERED")) return true;
+          // Hide: heartbeats (pattern: "open=N/M equity=$X R=$Y" or "bal=X equity=Y")
+          if (msg.match(/open=\d+\/\d+\s+equity=/)) return false;
+          if (msg.startsWith("bal=") || msg.startsWith("[Heartbeat]")) return false;
+          // Hide: per-bar M15 z-scans (long "EG_GC=X EU_UC=Y ..." lines) and POS_STATE
+          if (msg.match(/M15 bar .+ \|.+\|.+max\|z\|=/)) return false;
+          if (msg.includes("POS_STATE ")) return false;
+          if (msg.includes("[BarSigs]") || msg.includes("[BarDone]") || msg.includes("[BarState]")) return false;
+          // Default: show
+          return true;
+        };
+        const parsed = lines.filter((l) => isImportant(l.message || "")).map((l) => parseLogPairs(l.message));
         // Header columns come from the first heartbeat row so they reflect the
         // dominant format. Event rows in the body still render with their own
         // wider event/detail columns.
@@ -1531,8 +1679,6 @@ function AccountBlock({ acct }: { acct: Account }) {
       {/* V52 proximity gauge + FTMO challenge progress — each renders only when relevant. */}
       <div className="row" style={{ marginTop: 12 }}>
         <V52ProximityCard acct={acct} />
-        <OpenPositionsCard acct={acct} />
-        <ClosedPositionsCard acct={acct} />
         <FTMOChallengeCard acct={acct} />
       </div>
 
@@ -1549,7 +1695,7 @@ function AccountBlock({ acct }: { acct: Account }) {
 
       <div className="row" style={{ marginTop: 12 }}>
         <PositionsTable rows={acct.open_positions} />
-        <DealsTable rows={acct.recent_deals} />
+        <DealsTable rows={acct.recent_deals} acct={acct} />
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
