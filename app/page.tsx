@@ -237,38 +237,110 @@ function ResetButton({ tag }: { tag: string }) {
 // OpenPositionsCard (NEW 2026-06-10) — per-open-pair Z slider.
 // Parses POS_STATE events from V52 EA: "POS_STATE pair dir=N entry_z=X cur_z=Y min_z=Z max_z=W bars=B"
 // Renders a small slider per pair showing entry/current/min/max Z within [-stopZ, +stopZ] range.
-function OpenPositionsCard({ acct }: { acct: Account }) {
+// ClosedPositionsCard (NEW 2026-06-10) — show recent CLOSE events with entry/exit/min/max Z
+function ClosedPositionsCard({ acct }: { acct: Account }) {
   const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
-  if (v52Logs.length === 0) return null;
+  const v5pLogs = (acct.last_logs && acct.last_logs["V5+"]) || (acct.last_logs && acct.last_logs["ACCT10"]) || [];
+  if (v52Logs.length === 0 && v5pLogs.length === 0) return null;
 
-  // Parse each pair's most recent POS_STATE event
+  type ClosedTrade = {
+    ea: string; pair: string; reason: string;
+    entry_z: number; exit_z: number;
+    min_z: number; max_z: number;
+    bars: number; ts: string;
+  };
+  const trades: ClosedTrade[] = [];
+  const reV52 = /CLOSE\s+(\S+)\s+reason=(\w+)\s+legs=\d+\s+entry_z=(-?[0-9.]+)\s+exit_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  const reV5p = /POS_CLOSED\s+(\S+)\s+reason=(\w+)\s+entry_z=(-?[0-9.]+)\s+exit_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  
+  for (const [ea, logs, re] of [["V52", v52Logs, reV52] as const, ["V5+", v5pLogs, reV5p] as const]) {
+    for (const e of logs) {
+      const m = (e.message || "").match(re);
+      if (!m) continue;
+      trades.push({
+        ea, pair: m[1], reason: m[2],
+        entry_z: parseFloat(m[3]), exit_z: parseFloat(m[4]),
+        min_z: parseFloat(m[5]), max_z: parseFloat(m[6]),
+        bars: parseInt(m[7]), ts: e.ts,
+      });
+    }
+  }
+  if (trades.length === 0) return null;
+  trades.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  const show = trades.slice(0, 10);
+  
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 280 }}>
+      <h3>Recent closed trades — Z journey</h3>
+      <div style={{ fontSize: 11, color: "#98a3b3", marginBottom: 8 }}>
+        Last {show.length} of {trades.length} closes with entry/exit/min/max Z
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+        {show.map((t, i) => {
+          const reverted = Math.abs(t.exit_z) < Math.abs(t.entry_z);
+          const color = reverted ? "#7ec99e" : "#e57373";
+          return (
+            <div key={i} style={{ padding: 6, background: "#1a2030", borderRadius: 3, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <strong>{t.pair}</strong>
+                <span style={{ color: t.ea === "V52" ? "#8ec5ff" : "#ff9966", fontSize: 10, marginLeft: 4, padding: "1px 5px", border: "1px solid", borderRadius: 2 }}>{t.ea}</span>
+                <span style={{ color: "#98a3b3", marginLeft: 6, fontSize: 11 }}>{t.reason}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, fontSize: 11, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                <span title="Entry Z" style={{ color: "#8ec5ff" }}>{t.entry_z.toFixed(2)}</span>
+                <span style={{ color: "#666" }}>→</span>
+                <span title="Exit Z" style={{ color }}>{t.exit_z.toFixed(2)}</span>
+                <span title="Min Z" style={{ color: "#e57373" }}>[{t.min_z.toFixed(2)}</span>
+                <span title="Max Z" style={{ color: "#ff9966" }}>{t.max_z.toFixed(2)}]</span>
+                <span style={{ color: "#98a3b3" }}>{t.bars}b</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OpenPositionsCard({ acct }: { acct: Account }) {
+  // Parse POS_STATE from BOTH V52 and V5+ (NEW 2026-06-10)
+  const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
+  const v5pLogs = (acct.last_logs && acct.last_logs["V5+"]) || (acct.last_logs && acct.last_logs["ACCT10"]) || [];
+  if (v52Logs.length === 0 && v5pLogs.length === 0) return null;
+
   type PosState = {
-    pair: string; dir: number;
+    ea: string; pair: string; dir: number;
     entry_z: number; cur_z: number;
     min_z: number; max_z: number;
     bars: number; ts: string;
   };
   const states: Record<string, PosState> = {};
-  const re = /POS_STATE\s+(\w+)\s+dir=(-?\d+)\s+entry_z=(-?[0-9.]+)\s+cur_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
-  for (const e of v52Logs) {
-    const m = (e.message || "").match(re);
-    if (!m) continue;
-    const pair = m[1];
-    if (states[pair]) continue; // logs are descending; first seen = latest
-    states[pair] = {
-      pair, dir: parseInt(m[2]),
-      entry_z: parseFloat(m[3]), cur_z: parseFloat(m[4]),
-      min_z: parseFloat(m[5]), max_z: parseFloat(m[6]),
-      bars: parseInt(m[7]), ts: e.ts,
-    };
+  const re = /POS_STATE\s+(\S+)\s+dir=(-?\d+)\s+entry_z=(-?[0-9.]+)\s+cur_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  
+  for (const [ea, logs] of [["V52", v52Logs] as const, ["V5+", v5pLogs] as const]) {
+    for (const e of logs) {
+      const m = (e.message || "").match(re);
+      if (!m) continue;
+      const key = ea + ":" + m[1];
+      if (states[key]) continue;
+      states[key] = {
+        ea, pair: m[1], dir: parseInt(m[2]),
+        entry_z: parseFloat(m[3]), cur_z: parseFloat(m[4]),
+        min_z: parseFloat(m[5]), max_z: parseFloat(m[6]),
+        bars: parseInt(m[7]), ts: e.ts,
+      };
+    }
   }
   const list = Object.values(states);
   if (list.length === 0) return null;
 
-  // Sort by absolute distance from exit target (z=0) so most urgent at top
-  list.sort((a, b) => Math.abs(a.cur_z) - Math.abs(b.cur_z));
+  // Sort by EA then absolute distance from exit target
+  list.sort((a, b) => {
+    if (a.ea !== b.ea) return a.ea === "V52" ? -1 : 1;
+    return Math.abs(a.cur_z) - Math.abs(b.cur_z);
+  });
 
-  // Slider scale: [-StopZ, +StopZ], assume StopZ = 4.5 default
+  // Slider scale depends on EA — V52 uses ±4.5, V5+ uses ±3.25
   const STOP_Z = 4.5;
   const ENTRY_Z = 3.5;
   const SCALE_MIN = -STOP_Z;
@@ -300,7 +372,7 @@ function OpenPositionsCard({ acct }: { acct: Account }) {
           return (
             <div key={s.pair}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-                <span><strong>{s.pair}</strong> <span style={{ color: "#98a3b3" }}>{side}</span></span>
+                <span><strong>{s.pair}</strong> <span style={{ color: s.ea === "V52" ? "#8ec5ff" : "#ff9966", fontSize: 10, marginLeft: 4, padding: "1px 5px", border: "1px solid", borderRadius: 2 }}>{s.ea}</span> <span style={{ color: "#98a3b3", marginLeft: 4 }}>{side}</span></span>
                 <span style={{ color: curColor }}>cur z={s.cur_z.toFixed(2)}</span>
               </div>
               <div style={{ position: "relative", height: 18, background: "#1a2030", borderRadius: 3, overflow: "hidden" }}>
@@ -1460,6 +1532,7 @@ function AccountBlock({ acct }: { acct: Account }) {
       <div className="row" style={{ marginTop: 12 }}>
         <V52ProximityCard acct={acct} />
         <OpenPositionsCard acct={acct} />
+        <ClosedPositionsCard acct={acct} />
         <FTMOChallengeCard acct={acct} />
       </div>
 
