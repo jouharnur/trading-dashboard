@@ -1366,24 +1366,22 @@ function LastLogsCard({ acct }: { acct: Account }) {
         // Filter to important events only — hide routine heartbeats and per-bar z scans (NEW 2026-06-10)
         const isImportant = (msg: string): boolean => {
           const u = msg.toUpperCase();
-          // Always show: actions, errors, gating events, sizing, signals
           if (u.includes("OPEN ") || u.includes("CLOSE ") || u.includes("OPEN_FAILED")) return true;
           if (u.includes("HALT") || u.includes("LOCK") || u.includes("ABS_KILL") || u.includes("EMERGENCY")) return true;
           if (u.includes("PER_TRADE_STOP") || u.includes("BROKEN_HEDGE")) return true;
           if (u.includes("BETA_SIZING") || u.includes("BALANCE_JUMP")) return true;
           if (u.includes("CORR_SKIP") || u.includes("MIN_LOT_BUFFER")) return true;
           if (u.includes("POS_CLOSED") || u.includes("POSITION_RECOVERED")) return true;
-          // Hide: heartbeats (pattern: "open=N/M equity=$X R=$Y" or "bal=X equity=Y")
           if (msg.match(/open=\d+\/\d+\s+equity=/)) return false;
           if (msg.startsWith("bal=") || msg.startsWith("[Heartbeat]")) return false;
-          // Hide: per-bar M15 z-scans (long "EG_GC=X EU_UC=Y ..." lines) and POS_STATE
           if (msg.match(/M15 bar .+ \|.+\|.+max\|z\|=/)) return false;
           if (msg.includes("POS_STATE ")) return false;
           if (msg.includes("[BarSigs]") || msg.includes("[BarDone]") || msg.includes("[BarState]")) return false;
-          // Default: show
           return true;
         };
-        const parsed = lines.filter((l) => isImportant(l.message || "")).map((l) => parseLogPairs(l.message));
+        // Filter LINES first so subsequent index-based access (parsed[i]) lines up correctly
+        lines = lines.filter((l) => isImportant(l.message || ""));
+        const parsed = lines.map((l) => parseLogPairs(l.message));
         // Header columns come from the first heartbeat row so they reflect the
         // dominant format. Event rows in the body still render with their own
         // wider event/detail columns.
