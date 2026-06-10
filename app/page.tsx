@@ -234,6 +234,132 @@ function ResetButton({ tag }: { tag: string }) {
 //
 // Heartbeat format produced by the EA:
 //   open=0/8 equity=$110027.26 R=$1100.27 maxZ=1.36 need=3.5 market=LIVE
+// OpenPositionsCard (NEW 2026-06-10) — per-open-pair Z slider.
+// Parses POS_STATE events from V52 EA: "POS_STATE pair dir=N entry_z=X cur_z=Y min_z=Z max_z=W bars=B"
+// Renders a small slider per pair showing entry/current/min/max Z within [-stopZ, +stopZ] range.
+function OpenPositionsCard({ acct }: { acct: Account }) {
+  const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
+  if (v52Logs.length === 0) return null;
+
+  // Parse each pair's most recent POS_STATE event
+  type PosState = {
+    pair: string; dir: number;
+    entry_z: number; cur_z: number;
+    min_z: number; max_z: number;
+    bars: number; ts: string;
+  };
+  const states: Record<string, PosState> = {};
+  const re = /POS_STATE\s+(\w+)\s+dir=(-?\d+)\s+entry_z=(-?[0-9.]+)\s+cur_z=(-?[0-9.]+)\s+min_z=(-?[0-9.]+)\s+max_z=(-?[0-9.]+)\s+bars=(\d+)/;
+  for (const e of v52Logs) {
+    const m = (e.message || "").match(re);
+    if (!m) continue;
+    const pair = m[1];
+    if (states[pair]) continue; // logs are descending; first seen = latest
+    states[pair] = {
+      pair, dir: parseInt(m[2]),
+      entry_z: parseFloat(m[3]), cur_z: parseFloat(m[4]),
+      min_z: parseFloat(m[5]), max_z: parseFloat(m[6]),
+      bars: parseInt(m[7]), ts: e.ts,
+    };
+  }
+  const list = Object.values(states);
+  if (list.length === 0) return null;
+
+  // Sort by absolute distance from exit target (z=0) so most urgent at top
+  list.sort((a, b) => Math.abs(a.cur_z) - Math.abs(b.cur_z));
+
+  // Slider scale: [-StopZ, +StopZ], assume StopZ = 4.5 default
+  const STOP_Z = 4.5;
+  const ENTRY_Z = 3.5;
+  const SCALE_MIN = -STOP_Z;
+  const SCALE_MAX = STOP_Z;
+  const toPct = (v: number) => ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
+
+  return (
+    <div className="card" style={{ flex: 2, minWidth: 360 }}>
+      <h3>V52 Open Positions — Z range</h3>
+      <div style={{ fontSize: 11, color: "#98a3b3", marginBottom: 8 }}>
+        Scale: [{SCALE_MIN}, {SCALE_MAX}] · Entry threshold ±{ENTRY_Z} · Exit at z=0 · Stop at ±{STOP_Z}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {list.map((s) => {
+          const side = s.dir > 0 ? "SHORT" : "LONG";  // dir=+1 means z>=entry → SHORT spread
+          // Profitable direction for current vs entry
+          // For SHORT (dir>0): want z to decrease toward 0. Profitable if cur_z < entry_z.
+          // For LONG (dir<0): want z to increase toward 0. Profitable if cur_z > entry_z.
+          const reverting = s.dir > 0 ? (s.cur_z < s.entry_z) : (s.cur_z > s.entry_z);
+          const curColor = reverting ? "#7ec99e" : "#e57373";
+          const entryPct = toPct(s.entry_z);
+          const curPct = toPct(s.cur_z);
+          const minPct = toPct(s.min_z);
+          const maxPct = toPct(s.max_z);
+          // Direction-of-target line (z=0)
+          const zeroPct = toPct(0);
+          const stopUpPct = toPct(STOP_Z);
+          const stopDnPct = toPct(-STOP_Z);
+          return (
+            <div key={s.pair}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
+                <span><strong>{s.pair}</strong> <span style={{ color: "#98a3b3" }}>{side}</span></span>
+                <span style={{ color: curColor }}>cur z={s.cur_z.toFixed(2)}</span>
+              </div>
+              <div style={{ position: "relative", height: 18, background: "#1a2030", borderRadius: 3, overflow: "hidden" }}>
+                {/* min/max range bar — translucent */}
+                <div style={{
+                  position: "absolute", left: minPct + "%", width: (maxPct - minPct) + "%",
+                  top: 0, bottom: 0,
+                  background: "#3a4458", opacity: 0.6,
+                }} />
+                {/* Zero line (exit target) */}
+                <div style={{
+                  position: "absolute", left: zeroPct + "%", top: 0, bottom: 0,
+                  width: 1, background: "#7ec99e", opacity: 0.5,
+                }} />
+                {/* Entry Z markers ±3.5 */}
+                <div style={{
+                  position: "absolute", left: toPct(ENTRY_Z) + "%", top: 2, bottom: 2,
+                  width: 1, background: "#666", opacity: 0.7,
+                }} />
+                <div style={{
+                  position: "absolute", left: toPct(-ENTRY_Z) + "%", top: 2, bottom: 2,
+                  width: 1, background: "#666", opacity: 0.7,
+                }} />
+                {/* Entry Z marker — small triangle */}
+                <div style={{
+                  position: "absolute", left: `calc(${entryPct}% - 4px)`, top: 6,
+                  width: 8, height: 8, background: "#8ec5ff", borderRadius: "50%",
+                }} title={`Entry z=${s.entry_z.toFixed(2)}`} />
+                {/* min Z marker */}
+                <div style={{
+                  position: "absolute", left: `calc(${minPct}% - 2px)`, top: 2, bottom: 2,
+                  width: 4, background: "#e57373",
+                }} title={`Min seen z=${s.min_z.toFixed(2)}`} />
+                {/* max Z marker */}
+                <div style={{
+                  position: "absolute", left: `calc(${maxPct}% - 2px)`, top: 2, bottom: 2,
+                  width: 4, background: "#ff9966",
+                }} title={`Max seen z=${s.max_z.toFixed(2)}`} />
+                {/* Current Z marker — bigger */}
+                <div style={{
+                  position: "absolute", left: `calc(${curPct}% - 5px)`, top: 4, bottom: 4,
+                  width: 10, background: curColor, borderRadius: 2,
+                  boxShadow: `0 0 4px ${curColor}`,
+                }} title={`Current z=${s.cur_z.toFixed(2)}`} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#98a3b3", marginTop: 2 }}>
+                <span>min {s.min_z.toFixed(2)}</span>
+                <span>entry {s.entry_z.toFixed(2)}</span>
+                <span>max {s.max_z.toFixed(2)}</span>
+                <span>{s.bars} bars</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function V52ProximityCard({ acct }: { acct: Account }) {
   const v52Logs = (acct.last_logs && acct.last_logs["V52"]) || [];
   if (v52Logs.length === 0) return null;
@@ -1333,6 +1459,7 @@ function AccountBlock({ acct }: { acct: Account }) {
       {/* V52 proximity gauge + FTMO challenge progress — each renders only when relevant. */}
       <div className="row" style={{ marginTop: 12 }}>
         <V52ProximityCard acct={acct} />
+        <OpenPositionsCard acct={acct} />
         <FTMOChallengeCard acct={acct} />
       </div>
 
