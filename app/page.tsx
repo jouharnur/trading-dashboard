@@ -1694,7 +1694,7 @@ function AccountBlock({ acct }: { acct: Account }) {
       </div>
 
       <div className="row" style={{ marginTop: 12 }}>
-        <PositionsTable rows={acct.open_positions} />
+        <PositionsTable rows={acct.open_positions} acct={acct} />
         <DealsTable rows={acct.recent_deals} acct={acct} />
       </div>
 
